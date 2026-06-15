@@ -122,7 +122,8 @@ operating rules are in `RALPH.md`.
   - [x] Composition root: `bootstrap.create_bot(settings)` (engine + session_factory + shared httpx
     client + provider_factory) + `run()`; `TigrinhoBot.__init__` takes the factories; `setup_hook`→
     `_register_cogs` wires Help/Subscribe/Bets/Board/Sync/Poll; `tigrinho/__main__.py` (`python -m tigrinho`); 2 tests.
-  - [ ] `.env.example` + `config.example.yaml` (commit; §4).
+  - [x] `.env.example` (2 secrets) + `config.example.yaml` (every §4 key); test loads the example via
+    `load_settings`; both confirmed committable (not gitignored).
   - [ ] Dockerfile (python:3.12-slim, non-root, uv) + entrypoint (`alembic upgrade head` then run) +
     docker-compose.yml (env_file, /data volume, config bind-mount, CONFIG_PATH); `docker compose config` validates.
   - [ ] `CLAUDE.md` (grounding rule, secrets/settings split, /ajuda-in-sync maintenance rule).
@@ -294,7 +295,10 @@ operating rules are in `RALPH.md`.
 - **Iter 40 (M10 composition root):** `create_bot`/`run` in bootstrap + `TigrinhoBot` factory params +
   `_register_cogs` (all 6 cogs) + `tigrinho/__main__.py`. 2 tests (all cogs/commands registered offline;
   create_bot builds runtime). Cog `tasks.loop`s cancelled via `remove_cog` in tests.
-- **Next:** M10 (b) — `.env.example` (DISCORD_TOKEN, API_FOOTBALL_KEY) + `config.example.yaml` (every §4
-  key with the example values). Commit both (real `.env`/`config.yaml` already gitignored). No tests
-  (static files); optionally a tiny test that `config.example.yaml` loads via `load_settings`. Then (c)
-  Dockerfile+entrypoint+compose, (d) CLAUDE.md, (e) README §15.1 — one per iteration.
+- **Iter 41 (M10 examples):** `.env.example` + `config.example.yaml` (§4); test loads example.
+- **Next:** M10 (c) — **Dockerfile** (`python:3.12-slim`, non-root user, install deps via uv [`uv sync
+  --no-dev` or pip from pyproject]), **docker/entrypoint** (`alembic upgrade head` then `python -m
+  tigrinho`), **docker-compose.yml** (one `bot` service, `env_file: .env`, `restart: unless-stopped`,
+  named volume → `/data`, `config.yaml` bind-mount read-only, `CONFIG_PATH=/app/config.yaml`). Verify
+  with `docker compose config` (validates compose YAML without building). Don't build/run the image
+  (no Docker daemon assumed) — just author + `docker compose config`. Then (d) CLAUDE.md, (e) README §15.1.
