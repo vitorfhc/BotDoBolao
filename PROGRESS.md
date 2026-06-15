@@ -97,6 +97,11 @@ operating rules are in `RALPH.md`.
     BudgetExceeded→skip, stuck-game admin DM deduped in-memory); `resolve_scorer_name`; 2 tests.
     Wired into the bot composition root at M10 (with Sync/Bets/Subscribe cogs).
 - [ ] **M8 — Board cog:** `/placar geral|semana` with tie-breaks.
+  - [x] `bot/board_cog.py` core (pure) — `Period`, `StandingInput`/`StandingRow`, `week_bounds`
+    (Mon→Sun in tz), `compute_standings` (aggregate settled bets; tie-breaks: points→exact hits→correct
+    bets desc→earliest created_at), `render_placar` (top 15, medals, caller-outside line); 8 tests.
+  - [ ] `build_standing_inputs(session, period)` (DB: settled bets+player+game → `StandingInput`s) +
+    `BoardCog` `/placar [periodo]` (thin: build → compute → render → send).
 - [ ] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
@@ -248,10 +253,12 @@ operating rules are in `RALPH.md`.
 - **Iter 32 (M7 PollCog + alerts, M7 DONE):** `alerts.dm_admin` (fetch_user+send, swallow+log) +
   `PollCog` (tasks.loop, run_poll → collect_settlements → post results → stuck DM, in-memory dedup) +
   `resolve_scorer_name`. 2 tests. **M7 complete.**
-- **Next:** M8 — Board cog (`/placar geral|semana`). Keep the standings computation PURE/testable:
-  `compute_standings(rows) -> list[StandingRow]` from settled-bet rows (player_discord_id, points,
-  is_correct, category, created_at, game kickoff) with tie-breaks (1) total points desc, (2) exact-score
-  hits desc, (3) total correct bets desc, (4) earliest players.created_at; weekly = games whose kickoff
-  is in the current Mon→Sun week in `timezone`. Then `render_placar` (top ~15 + medals + caller's own
-  line if outside top 15) and `BoardCog` `/placar [periodo]`. Build `compute_standings` + `render_placar`
-  pure first (rebuildable from settled bets, §10), then the thin cog. No new external lib.
+- **Iter 33 (M8 standings core):** pure `week_bounds`/`compute_standings`/`render_placar` (Period,
+  StandingInput/StandingRow); §10 tie-breaks + weekly filter; 8 tests. Discord-free.
+- **Next:** M8 — DB builder + cog. `build_standing_inputs(session) -> list[StandingInput]`: query
+  settled bets (settled_at not None, points_awarded not None) joined to player (name, created_at) + game
+  (kickoff_utc); for weekly, compute_standings filters by week so the builder can return all. Then
+  `BoardCog` `/placar [periodo: geral|semana]` (app_commands param default geral; build → compute_standings
+  → render_placar → ephemeral or public?). §10 doesn't say ephemeral; placar is social → post publicly
+  (not ephemeral). Test build_standing_inputs (DB) + cog registration. Then **M8 done → M9 Admin CLI**
+  (Typer; ground Typer first). Reuse repos + apply_settlement + compute_standings for the CLI groups.
