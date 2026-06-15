@@ -133,6 +133,12 @@ operating rules are in `RALPH.md`.
   - [x] `README.md` — full deploy guide, all 14 §15.1 sections (copy-paste runnable); content test
     asserts the sections + key steps/commands. **M10 complete.**
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
+  - [x] End-to-end `provider_mode: fake` smoke test (`test_e2e_fake`): sync → place bets → settle →
+    scoreboard through the real seams, no network/secrets; asserts points land on the board. ✓ RALPH criterion.
+  - [ ] Budget-enforcement end-to-end test (RequestBudget at cap → BudgetExceeded propagates through a
+    cog seam → sync/poll skip; counter not consumed when over cap).
+  - [ ] Edge-case/coverage sweep (run `pytest --cov` on domain; confirm scoring/settlement ~100%); add
+    any missing edge tests. Final full gates + `docker compose config` pass → then the promise.
 
 ## Notes / blockers / decisions
 - **Iter 1 (M0 scaffold):** Chose `uv` as the project runner. Gates command is
@@ -305,11 +311,11 @@ operating rules are in `RALPH.md`.
 - **Iter 43 (M10 CLAUDE.md):** Wrote CLAUDE.md (the 3 mandatory rules + principles/gates/module map);
   content test enforces it.
 - **Iter 44 (M10 README, M10 DONE):** Full README §15.1 (14 sections) + content test. **M10 complete.**
-- **Next:** M11 — Hardening. Key deliverable (also a RALPH completion criterion): an **end-to-end
-  `provider_mode: fake` smoke test** that, with **no network and no secrets**, exercises
-  **sync → place bet → settle → scoreboard** through the real seams (FakeProvider + a temp SQLite +
-  `collect_sync_messages` / `place_bet` / `collect_settlements` (or `apply_settlement`) /
-  `build_standing_inputs`+`compute_standings`), asserting points land on the board. Then: budget
-  enforcement end-to-end (BudgetExceeded path), an edge-case sweep / coverage check, and a final
-  full-gates + `docker compose config` pass. When all M0–M11 boxes are checked and gates+compose+e2e
-  green → output the promise.
+- **Iter 45 (M11 e2e smoke test):** `test_e2e_fake` — full sync→bet→settle→scoreboard, offline,
+  asserts {100:7, 200:0} on the board. RALPH criterion met.
+- **Next:** M11 — budget-enforcement end-to-end test: build an `ApiFootballProvider` (mock httpx) with a
+  `RequestBudget` already at cap (seed `ApiUsageRepository`), drive it through `collect_settlements`/
+  `collect_sync_messages` (active games present) and assert `BudgetExceeded` propagates (cog would skip)
+  and the HTTP handler is never called. Then run `pytest --cov=tigrinho.domain` to confirm scoring/
+  settlement ~100% (add edge tests if gaps), do a final `ruff/format/mypy/pytest` + `docker compose
+  config` pass, check off M11, and output `<promise>TIGRINHO COMPLETE</promise>` once all are green.
