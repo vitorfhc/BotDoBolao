@@ -68,9 +68,12 @@ operating rules are in `RALPH.md`.
     `GameNotOpenError` pt-BR); 8 tests.
   - [x] `domain/text_pt.py` rendering — `render_payload` (pt-BR: score "2x1", scorer name/#id, BTTS/
     winner/over-under labels) + `BTTS_LABELS_PT`/`WINNER_LABELS_PT`/`OVER_UNDER_LABELS_PT`; 6 tests.
-  - [ ] `bot/bets_cog.py` — `/apostar` (game select → category select → modal/select → confirm/upsert),
-    `/minhas_apostas` (list open/settled + delete control), `/jogos` (open games + what's left).
-    **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`, followup).**
+  - [x] `bot/bets_view.py` (pure) — `render_my_bets` (group by game, open vs apurados, ✅/❌+pts) +
+    `render_open_games` (kickoff local, stage, "falta palpitar"/"tudo palpitado") + `STAGE_LABELS_PT`;
+    `MyBetLine`/`OpenGameLine` inputs; 6 tests.
+  - [ ] `bot/bets_cog.py` — build entries from repos + `/minhas_apostas`/`/jogos` (thin, over render_*),
+    then `/apostar` (game select → category select → modal/select → confirm/upsert via place_bet) +
+    delete control. **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`, followup).**
   - [x] `bot/subscribe_cog.py` — pure `decide_subscribe` (already/not subscribed → reply + perform?) +
     `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
     grounded vs discord.py role ops; 5 tests.
@@ -202,11 +205,10 @@ operating rules are in `RALPH.md`.
   selection label maps. 6 tests. Bet line = `CATEGORY_LABELS_PT[cat]: render_payload(payload)`.
 - **Iter 23 (M6 subscribe_cog):** pure `decide_subscribe` + `SubscribeCog` (`/inscrever`/`/sair`,
   member.add_roles/remove_roles, ephemeral, Forbidden→pt-BR). 5 tests. Grounded discord.py role ops.
-- **Next:** M6 — the **bets cog** (`/apostar`, `/minhas_apostas`, `/jogos`) — the largest UI piece.
-  Strategy: build the testable pieces first as pure render/builder functions in text_pt (or a bets_view
-  helper): `render_my_bets(bets+games)` (open vs settled, ✓/✗+pts), `render_open_games(games, bets, tz)`
-  (kickoff local, stage, what's left to predict). Then the `/apostar` component flow (game Select →
-  category Select → Modal[score]/Select[winner/btts/ou/scorer] → confirm → place_bet) as a thin
-  `ui.View` layer over `parse_payload`+`place_bet`. **Ground discord.py UI (`ui.View`, `ui.Select`,
-  `ui.Button`, `ui.Modal`, `followup`/`edit_message`).** Likely 2-3 iterations: (a) render helpers +
-  `/minhas_apostas`+`/jogos`; (b) `/apostar` view flow.
+- **Iter 24 (M6 bets_view render):** pure `render_my_bets` + `render_open_games` + `STAGE_LABELS_PT`
+  (input dataclasses `MyBetLine`/`OpenGameLine`); 6 tests. DB-build + cog wiring next.
+- **Next:** M6 — `bot/bets_cog.py`: testable `build_my_bet_lines(session, player_id, scorer_resolver)`
+  and `build_open_game_lines(session, player_id, now)` (DB → the view dataclasses; resolve scorer names
+  via SquadRepository), then `BetsCog` `/minhas_apostas` + `/jogos` (thin: build → render_* → ephemeral
+  send). Test the build_* with a real DB. `/apostar` component flow (ui.View/Select/Modal over
+  parse_payload+place_bet) is the iteration after. **Ground discord.py UI before the /apostar flow.**
