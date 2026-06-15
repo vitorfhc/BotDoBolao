@@ -32,6 +32,9 @@ operating rules are in `RALPH.md`.
     from/to+window filter, `live=all`+league filter, `/fixtures/events`, `/players/squads`; calls gated
     by `RequestBudget`; body-`errors`→`ApiFootballError`; `aclose()`); 8 mock-transport tests.
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
+  - [x] `domain/bets.py` — `BetCategory` + selection enums + frozen payload models (ExactScore/FirstScorer/Btts/Winner/OverUnder) + `parse_payload`/`payload_to_dict`/`dump_payload`/`parse_payload_json` with validation (`InvalidBetPayload`); PEP 695 generics; 21 tests.
+  - [ ] `domain/scoring.py` — central points table + pure per-category grading over a 90' result.
+  - [ ] `domain/settlement.py` — grade every bet for a `MatchResult` (idempotent) + exhaustive §16 tests.
 - [ ] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
 - [ ] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
 - [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
@@ -119,8 +122,13 @@ operating rules are in `RALPH.md`.
   the API ignores the league param with live); get_match_result does 2 calls (fixture + events) and
   merges goals (2 budget increments); get_squad maps squads. Dep: `httpx`. 8 offline tests via
   `httpx.MockTransport`. **M2 complete.**
-- **Next:** M3 — Domain (pure, ~100% coverage). Start with `domain/bets.py`: `BetCategory` enum +
-  per-category payload models (typed; `EXACT_SCORE {home,away}`, `FIRST_SCORER {player_id}`,
-  `BTTS {sel}`, `WINNER {sel}`, `OVER_UNDER {sel}`) + parse/validate from JSON (knockout hides DRAW —
-  but that's UI; model still validates). No external lib (pure). Then `scoring.py` (points table) and
-  `settlement.py` (grade a MatchResult) with exhaustive §16 tests.
+- **Iter 13 (M3 bets.py):** Wrote `domain/bets.py` — categories/selection enums, frozen payload
+  dataclasses, validate (`parse_payload`, ints/enums, `InvalidBetPayload`), serialize
+  (`payload_to_dict`/`dump_payload`/`parse_payload_json`). bool rejected as score; player_id>0;
+  DRAW accepted by model (knockout rule is grading/UI). Used PEP 695 `[E: StrEnum]` per ruff UP047.
+  21 tests. NB: `data.get` returns `Any | None` → coerce via a local `Any` for the enum ctor.
+- **Next:** M3 — `domain/scoring.py`: central `POINTS` table (EXACT_SCORE 5, FIRST_SCORER 4, BTTS 2,
+  WINNER 2, OVER_UNDER 1) + pure `grade(payload, result)` per category over the 90' result
+  (knockout WINNER = advancing team, no draw; group = 1X2; first-scorer = first non-own-goal min<=90;
+  BTTS pattern; O/U 2.5). Exhaustive §16 table tests (edge cases: 0-0, own-goal-first, O/U boundary,
+  knockout draw-selection-loses). Then `settlement.py`.
