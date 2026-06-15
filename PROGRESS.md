@@ -71,9 +71,9 @@ operating rules are in `RALPH.md`.
   - [x] `bot/bets_view.py` (pure) — `render_my_bets` (group by game, open vs apurados, ✅/❌+pts) +
     `render_open_games` (kickoff local, stage, "falta palpitar"/"tudo palpitado") + `STAGE_LABELS_PT`;
     `MyBetLine`/`OpenGameLine` inputs; 6 tests.
-  - [ ] `bot/bets_cog.py` — build entries from repos + `/minhas_apostas`/`/jogos` (thin, over render_*),
-    then `/apostar` (game select → category select → modal/select → confirm/upsert via place_bet) +
-    delete control. **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`, followup).**
+  - [~] `bot/bets_cog.py` — `build_my_bet_lines`/`build_open_game_lines` (DB→view, scorer-name resolver)
+    + `BetsCog` `/minhas_apostas` + `/jogos` (thin: build → render_* → ephemeral); 4 tests. Remaining:
+    `/apostar` component flow (+ delete control) — **ground discord.py UI (`ui.View`/`Select`/`Modal`).**
   - [x] `bot/subscribe_cog.py` — pure `decide_subscribe` (already/not subscribed → reply + perform?) +
     `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
     grounded vs discord.py role ops; 5 tests.
@@ -207,8 +207,13 @@ operating rules are in `RALPH.md`.
   member.add_roles/remove_roles, ephemeral, Forbidden→pt-BR). 5 tests. Grounded discord.py role ops.
 - **Iter 24 (M6 bets_view render):** pure `render_my_bets` + `render_open_games` + `STAGE_LABELS_PT`
   (input dataclasses `MyBetLine`/`OpenGameLine`); 6 tests. DB-build + cog wiring next.
-- **Next:** M6 — `bot/bets_cog.py`: testable `build_my_bet_lines(session, player_id, scorer_resolver)`
-  and `build_open_game_lines(session, player_id, now)` (DB → the view dataclasses; resolve scorer names
-  via SquadRepository), then `BetsCog` `/minhas_apostas` + `/jogos` (thin: build → render_* → ephemeral
-  send). Test the build_* with a real DB. `/apostar` component flow (ui.View/Select/Modal over
-  parse_payload+place_bet) is the iteration after. **Ground discord.py UI before the /apostar flow.**
+- **Iter 25 (M6 build_* + read commands):** `build_my_bet_lines`/`build_open_game_lines` (DB→view,
+  scorer-name resolver) + `BetsCog` `/minhas_apostas` + `/jogos` (thin). 4 tests. NB: bets FK players,
+  so seed the player before bets.
+- **Next:** M6 — the `/apostar` component flow. **Ground discord.py UI** (`ui.View`, `ui.Select`,
+  `ui.Button`, `ui.Modal`, `Interaction.response.send_message(view=...)`, `interaction.edit_original_response`,
+  modal `on_submit`). Flow: `/apostar` → open-games Select → category Select → category-specific input
+  (Modal for EXACT_SCORE; Select for WINNER[hide DRAW if knockout]/BTTS/OVER_UNDER; paginated squad
+  Select for FIRST_SCORER) → confirm → `parse_payload`+`place_bet`. Keep any pure pieces (e.g. building
+  select options from open games / squad, knockout DRAW-hiding) testable; the View glue stays thin. The
+  delete control on `/minhas_apostas` can come with it. Likely 1-2 iterations. Then M6 done → M7 poll.
