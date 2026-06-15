@@ -11,10 +11,9 @@ operating rules are in `RALPH.md`.
   - [x] `logging.py` — structlog 26.1.0 to stdout, JSON (default) or console renderer, level filtering; 5 tests.
 - [ ] **M1 — Data layer:** ORM models, Alembic initial migration, repositories + tests.
   - [x] ORM models + engine: `db/types.py` (`TZDateTime`), `db/models.py` (Base + Player/Game/Bet/SquadPlayer/ApiUsage), `db/engine.py` (engine + session factory, SQLite FK pragma); 7 tests (schema, tz round-trip, unique + FK constraints).
-  - [~] `db/repositories.py` — core repos done: `PlayerRepository` (get/get_or_create/list_all),
-    `GameRepository` (get/add/list_all/list_open/list_active), `BetRepository`
-    (get/get_for/upsert/list_for_player/list_for_game/delete); 9 tests. Remaining: `SquadRepository`,
-    `ApiUsageRepository`.
+  - [x] `db/repositories.py` — all repos done: `PlayerRepository`, `GameRepository`, `BetRepository`
+    (9 tests) + `SquadRepository` (get/list_for_team/replace_team/count) and `ApiUsageRepository`
+    (get_count/increment) (7 tests).
   - [ ] Alembic initial migration + entrypoint `upgrade head` (verify schema matches models).
 - [ ] **M2 — Provider:** value objects + `FootballProvider` Protocol, `FakeProvider`, `ApiFootballProvider`, `RequestBudget` (hard-stop at cap) + tests.
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
@@ -67,5 +66,11 @@ operating rules are in `RALPH.md`.
   timestamps (no hidden clock → deterministic). `list_active` avoids SQL interval math via
   `kickoff >= now - window`. `upsert` enforces edit-in-place for the one-bet-per-category rule.
   Aware-UTC `now` binds correctly through `TZDateTime`. 9 tests.
-- **Next:** M1 — `SquadRepository` + `ApiUsageRepository` (+ tests), then the Alembic initial migration.
-  Squad: get_by_team/upsert/bulk seed. ApiUsage: get/increment for a budget_date (pairs with M2 budget).
+- **Iter 6 (M1 cache/budget repos):** Added `SquadRepository` (get, list_for_team ordered by name,
+  replace_team = drop+insert with a flush between so reused player ids don't collide, count) and
+  `ApiUsageRepository` (get_count → 0 when absent, increment = get-or-create then +1, returns new
+  count). 7 tests. All 5 repositories now complete.
+- **Next:** M1 — Alembic initial migration. **Ground Alembic first** (web search: `alembic init`,
+  `env.py` wiring to `Base.metadata`, autogenerate, offline/online, `script_location`, batch mode for
+  SQLite ALTER). Add `alembic` dep. Then verify `upgrade head` produces a schema matching the models
+  (e.g. compare to `create_all` via a test) and the entrypoint runs `alembic upgrade head` (M10).
