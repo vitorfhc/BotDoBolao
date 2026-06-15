@@ -52,7 +52,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy --strict . &&
 - `config.py` — `Settings` (`.env` + `config.yaml`), fail-fast. `logging.py` — structlog setup.
 - `db/` — `models.py` (typed ORM + `TZDateTime`), `engine.py`, `repositories.py`, `migrations/` (Alembic).
 - `providers/` — `base.py` (value objects + `FootballProvider` Protocol), `fake.py`, `api_football.py`,
-  `budget.py` (`RequestBudget` hard-stop).
+  `budget.py` (`RequestBudget` hard-stop), `retry.py` (`retry_async` — transient-error backoff).
 - `domain/` — `bets.py` (categories/payloads), `scoring.py` (points + grading), `settlement.py`, `text_pt.py`.
 - `bot/` — `client.py` (`TigrinhoBot`), `*_cog.py` (sync, poll, bets, board, subscribe, help), `alerts.py`.
 - `bootstrap.py` — composition root (`build_provider`, `create_bot`, `run`). `cli.py` — admin Typer CLI.
