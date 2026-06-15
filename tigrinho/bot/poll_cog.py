@@ -23,7 +23,7 @@ from tigrinho.domain.scoring import first_genuine_scorer
 from tigrinho.domain.settlement import BetInput, match_facts_from_result, settle_game
 from tigrinho.domain.text_pt import CATEGORY_LABELS_PT
 from tigrinho.logging import get_logger
-from tigrinho.providers.base import FootballProvider, GameStatus, MatchResult
+from tigrinho.providers.base import FootballProvider, GameStatus, GoalEvent, MatchResult
 from tigrinho.providers.budget import BudgetExceeded
 
 from .alerts import dm_admin
@@ -55,6 +55,181 @@ class SettledGame:
     away_goals_90: int
     first_scorer_player_id: int | None
     players: list[PlayerResult]
+
+
+@dataclass(frozen=True, slots=True)
+class KickoffNotice:
+    """A game that just kicked off (bets now closed)."""
+
+    fixture_id: int
+    home_team_name: str
+    away_team_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class GoalAnnouncement:
+    """One goal to announce: the beneficiary side, the resulting scoreline, and (best-effort) the
+    scorer. ``scorer_name``/``minute`` are ``None`` when the events feed hasn't caught up yet."""
+
+    scoring_team_name: str
+    home_team_name: str
+    away_team_name: str
+    home_goals: int
+    away_goals: int
+    scorer_name: str | None
+    minute: int | None
+    is_own_goal: bool
+    is_penalty: bool
+
+
+@dataclass(frozen=True, slots=True)
+class GoalNotice:
+    """A goal to post for a game."""
+
+    fixture_id: int
+    announcement: GoalAnnouncement
+
+
+@dataclass(frozen=True, slots=True)
+class GoalDelta:
+    """How many new goals appeared this cycle, per side (from the live-score diff)."""
+
+    home_new: int
+    away_new: int
+
+    @property
+    def has_new(self) -> bool:
+        return self.home_new > 0 or self.away_new > 0
+
+
+@dataclass(frozen=True, slots=True)
+class PollOutcome:
+    """Everything one poll cycle produced: settlements + live-match notifications (§9.2/§9.3)."""
+
+    settled: list[SettledGame]
+    kickoffs: list[KickoffNotice]
+    goals: list[GoalNotice]
+
+
+def detect_kickoff(*, status: GameStatus, kickoff_announced_at: datetime | None) -> bool:
+    """A kickoff is announceable when the game is LIVE and we haven't announced it yet."""
+    return status is GameStatus.LIVE and kickoff_announced_at is None
+
+
+def detect_goal_deltas(
+    *,
+    stored_home: int | None,
+    stored_away: int | None,
+    current_home: int | None,
+    current_away: int | None,
+) -> GoalDelta:
+    """New goals per side since the last announced score. Decreases (VAR) yield zero — the caller
+    resyncs the stored score down without announcing. ``None`` is treated as 0."""
+    sh = stored_home or 0
+    sa_ = stored_away or 0
+    ch = current_home or 0
+    ca = current_away or 0
+    return GoalDelta(home_new=max(0, ch - sh), away_new=max(0, ca - sa_))
+
+
+def reconcile_goals(
+    *,
+    home_team_id: int,
+    away_team_id: int,
+    home_team_name: str,
+    away_team_name: str,
+    stored_home: int | None,
+    stored_away: int | None,
+    current_home: int | None,
+    current_away: int | None,
+    timeline: tuple[GoalEvent, ...],
+) -> tuple[list[GoalAnnouncement], int, int]:
+    """Turn a live-score change into per-goal announcements, returning
+    ``(announcements, new_stored_home, new_stored_away)``.
+
+    The **live score** (``current_home``/``current_away``) is the source of truth for *how many*
+    goals exist; the ``timeline`` (from ``/fixtures/events``) names the scorers. Own goals count for
+    the opponent. If the timeline lags (fewer entries than the live score), the extra goals are
+    announced with ``scorer_name=None`` ('artilheiro a confirmar'). A decrease (VAR) produces no
+    announcements and just resyncs the stored score. ``None`` live scores leave that side unchanged.
+    """
+    sh = stored_home or 0
+    sa_ = stored_away or 0
+    ch = current_home if current_home is not None else sh
+    ca = current_away if current_away is not None else sa_
+
+    # VAR / disallowed goal: a side dropped -> resync to live, announce nothing.
+    if ch < sh or ca < sa_:
+        return ([], ch, ca)
+
+    # Split the timeline into beneficiary-ordered goal lists (own goals credit the opponent).
+    home_events: list[GoalEvent] = []
+    away_events: list[GoalEvent] = []
+    for event in timeline:
+        scored_by_home = event.team_id == home_team_id
+        home_benefits = (not scored_by_home) if event.is_own_goal else scored_by_home
+        (home_events if home_benefits else away_events).append(event)
+
+    announcements: list[GoalAnnouncement] = []
+    for index in range(sh, ch):  # new home goals: stored_home .. current_home - 1
+        opt_ev: GoalEvent | None = home_events[index] if index < len(home_events) else None
+        announcements.append(
+            GoalAnnouncement(
+                scoring_team_name=home_team_name,
+                home_team_name=home_team_name,
+                away_team_name=away_team_name,
+                home_goals=index + 1,
+                away_goals=ca,
+                scorer_name=opt_ev.player_name if opt_ev is not None else None,
+                minute=opt_ev.minute if opt_ev is not None else None,
+                is_own_goal=opt_ev.is_own_goal if opt_ev is not None else False,
+                is_penalty=opt_ev.is_penalty if opt_ev is not None else False,
+            )
+        )
+    for index in range(sa_, ca):  # new away goals
+        opt_ev = away_events[index] if index < len(away_events) else None
+        announcements.append(
+            GoalAnnouncement(
+                scoring_team_name=away_team_name,
+                home_team_name=home_team_name,
+                away_team_name=away_team_name,
+                home_goals=ch,
+                away_goals=index + 1,
+                scorer_name=opt_ev.player_name if opt_ev is not None else None,
+                minute=opt_ev.minute if opt_ev is not None else None,
+                is_own_goal=opt_ev.is_own_goal if opt_ev is not None else False,
+                is_penalty=opt_ev.is_penalty if opt_ev is not None else False,
+            )
+        )
+    return (announcements, ch, ca)
+
+
+def render_kickoff_message(home_team_name: str, away_team_name: str) -> str:
+    """pt-BR kickoff message (bets are now closed)."""
+    return (
+        f"🟢 **Bola rolando!** {home_team_name} x {away_team_name}"
+        f" — as apostas estão encerradas. 🐯"
+    )
+
+
+def render_goal_message(announcement: GoalAnnouncement) -> str:
+    """pt-BR goal message: beneficiary team, scoreline, and best-effort scorer with annotations."""
+    scoreline = (
+        f"{announcement.home_team_name} {announcement.home_goals}x{announcement.away_goals} "
+        f"{announcement.away_team_name}"
+    )
+    head = f"⚽ **GOOOL do {announcement.scoring_team_name}!** {scoreline}"
+    if announcement.scorer_name is None:
+        return f"{head} — 👟 artilheiro a confirmar"
+    extras: list[str] = []
+    if announcement.minute is not None:
+        extras.append(f"{announcement.minute}'")
+    if announcement.is_own_goal:
+        extras.append("gol contra")
+    if announcement.is_penalty:
+        extras.append("de pênalti")
+    suffix = f" ({', '.join(extras)})" if extras else ""
+    return f"{head} — 👟 {announcement.scorer_name}{suffix}"
 
 
 def apply_settlement(session: Session, result: MatchResult, *, now: datetime) -> SettledGame | None:
