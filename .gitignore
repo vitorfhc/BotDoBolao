@@ -30,3 +30,6 @@ config.yaml
 
 # Ralph loop local state
 .claude/ralph-loop.local.md
+
+# Firecrawl scrape artifacts (research only)
+.firecrawl/

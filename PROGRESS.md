@@ -25,7 +25,11 @@ operating rules are in `RALPH.md`.
   - [x] `providers/budget.py` — `RequestBudget.run(call)` (reads today's count in reset_tz; `>= cap` →
     `BudgetExceeded`, call skipped; success → increment; failed call does NOT consume; auto reset on
     date rollover) + `budget_date()`/`remaining()`; injected clock; 6 tests.
-  - [ ] `providers/api_football.py` — `ApiFootballProvider` (httpx) + JSON→value-object mapping tests (mock httpx). **Ground API-Football v3 first.**
+  - [~] `providers/api_football.py` — **grounded** vs live API-Football v3 docs. Pure JSON→value-object
+    mapping done: `normalize_status`, `parse_stage`, `parse_kickoff`, `parse_fixture`,
+    `parse_match_result` (90'=`score.fulltime`, advancing from `teams.*.winner`), `parse_goal_events`
+    (keeps Normal/Penalty/Own goals, drops Missed Penalty + non-goals), `parse_squad_players`; 33 tests.
+    Remaining: `ApiFootballProvider` class (httpx client + endpoints + budget wiring) + mock-httpx tests.
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
 - [ ] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
 - [ ] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
@@ -101,8 +105,15 @@ operating rules are in `RALPH.md`.
   and increments on success only (failed call consumes nothing). `remaining()` clamped ≥0. Increment via
   `ApiUsageRepository` (caller commits). Benign over-count possible under concurrent awaits — acceptable
   for single-process asyncio; cap is a safety ceiling. 6 tests.
-- **Next:** M2 — `providers/api_football.py` (`ApiFootballProvider`, httpx). **MANDATORY: ground
-  API-Football v3 docs first** (web search): exact endpoints (`/fixtures`, `/fixtures/events`,
-  `/players/squads`), auth header (`x-apisports-key` vs RapidAPI), `score.fulltime`, `teams.*.winner`,
-  status codes, round→stage, WC-2026 league id/season. Live docs win → update COMPLETION.md if they
-  differ. Map JSON→value objects; test with mock httpx (no network). Add `httpx` dep.
+- **Iter 11 (M2 api_football mapping):** GROUNDED API-Football v3 via firecrawl (official docs 403 to
+  plain fetch). Confirmed base `https://v3.football.api-sports.io`, header `x-apisports-key`, and exact
+  field paths for /fixtures, /fixtures/events, /players/squads. Live docs add statuses beyond the spec
+  (SUSP/INT→LIVE, AWD/WO→CANCELLED) → **updated COMPLETION.md §7.2** in the same commit. Wrote pure
+  mapping fns (no I/O) + 33 tests incl. the fulltime-vs-ET/penalty case and goal-event filtering.
+  WC league id: docs don't list ids inline (query /leagues, needs key) → keep config default
+  `wc_league_id=1`; operator verifies (README troubleshooting at M10). `.firecrawl/` gitignored.
+- **Next:** M2 — `ApiFootballProvider` class in `api_football.py`: `httpx.AsyncClient` (base_url, header
+  `x-apisports-key`, timeout); methods build params (`/fixtures?league&season&from&to&timezone`,
+  `live=all`, `/fixtures/events?fixture`, `/players/squads?team`), call via injected `RequestBudget`,
+  check body `errors`, feed the parse_* fns. Add `httpx` dep; test with mock transport (no network).
+  Then M2 done → M3 Domain.

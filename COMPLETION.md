@@ -261,8 +261,12 @@ fixtures/results for tests and local development (selected via the `provider_mod
 - **Stage:** `KNOCKOUT` if the fixture round is a knockout round (Round of 32/16, QF, SF, Final,
   3rd place); else `GROUP`.
 - **Advancing team (knockout):** the side whose `teams.{home,away}.winner == true`.
-- **Status normalization:** `NS/TBD → SCHEDULED`; `1H/HT/2H/ET/BT/P/LIVE → LIVE`;
-  `FT/AET/PEN → FINISHED`; `PST → POSTPONED`; `CANC/ABD → CANCELLED`.
+- **Status normalization** (verified 2026-06 against live API-Football v3 docs; auth header
+  `x-apisports-key`, base `https://v3.football.api-sports.io`): `NS/TBD → SCHEDULED`;
+  `1H/HT/2H/ET/BT/P/SUSP/INT/LIVE → LIVE`; `FT/AET/PEN → FINISHED`; `PST → POSTPONED`;
+  `CANC/ABD/AWD/WO → CANCELLED`. (`SUSP`/`INT` are transient in-play states; `AWD` technical-loss
+  and `WO` walkover are "not played" outcomes → treated as cancelled, bets voided. An unknown short
+  code is a fail-fast `ValueError`.)
 - **Goal timeline (first scorer):** from `fixtures/events`, take events where `type == "Goal"`,
   `detail ∈ {"Normal Goal","Penalty"}` (exclude `"Own Goal"` and `"Missed Penalty"`), and
   `time.elapsed <= 90` (stoppage included; ET goals have `elapsed > 90` and are excluded;
