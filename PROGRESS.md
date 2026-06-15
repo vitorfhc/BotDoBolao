@@ -22,7 +22,9 @@ operating rules are in `RALPH.md`.
   - [x] `providers/base.py` — frozen value objects (`GoalEvent`, `Fixture`, `MatchResult`, `SquadPlayer`) + `Stage`/`GameStatus` enums + `@runtime_checkable FootballProvider` Protocol (4 async methods); 6 tests.
   - [x] `providers/fake.py` — `FakeProvider` (scripted fixtures/results/squads; `set_*` mutators for
     multi-step sims; offline; returns copies; raises `LookupError` on unscripted match result); 8 tests.
-  - [ ] `providers/budget.py` — `RequestBudget` (per-day counter, hard-stop at cap, `BudgetExceeded`) + tests.
+  - [x] `providers/budget.py` — `RequestBudget.run(call)` (reads today's count in reset_tz; `>= cap` →
+    `BudgetExceeded`, call skipped; success → increment; failed call does NOT consume; auto reset on
+    date rollover) + `budget_date()`/`remaining()`; injected clock; 6 tests.
   - [ ] `providers/api_football.py` — `ApiFootballProvider` (httpx) + JSON→value-object mapping tests (mock httpx). **Ground API-Football v3 first.**
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
 - [ ] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
@@ -94,8 +96,13 @@ operating rules are in `RALPH.md`.
   fixtures/live_results/match_results/squads, plus `set_*` mutators for poll/sync simulations; returns
   list copies; `get_fixtures` ignores `window_hours` (script what you want); unscripted match result →
   `LookupError`. 8 tests (incl. Protocol conformance). No external surface.
-- **Next:** M2 — `providers/budget.py` (`RequestBudget`): wraps a provider call; reads today's count
-  from `ApiUsageRepository` in `api_budget_reset_tz`; if `count >= api_daily_cap` raise `BudgetExceeded`
-  (no request); else run call + increment. Pure-ish: inject the repo + a `now`/today provider + the
-  cap. Tests: under cap increments, at cap raises and does NOT call. Then `api_football.py` (ground
-  API-Football v3 first).
+- **Iter 10 (M2 budget.py):** `RequestBudget` gates provider calls: injected clock + `reset_tz` →
+  `budget_date()`; `run(call)` checks `get_count >= cap` (raise `BudgetExceeded`, skip) else awaits call
+  and increments on success only (failed call consumes nothing). `remaining()` clamped ≥0. Increment via
+  `ApiUsageRepository` (caller commits). Benign over-count possible under concurrent awaits — acceptable
+  for single-process asyncio; cap is a safety ceiling. 6 tests.
+- **Next:** M2 — `providers/api_football.py` (`ApiFootballProvider`, httpx). **MANDATORY: ground
+  API-Football v3 docs first** (web search): exact endpoints (`/fixtures`, `/fixtures/events`,
+  `/players/squads`), auth header (`x-apisports-key` vs RapidAPI), `score.fulltime`, `teams.*.winner`,
+  status codes, round→stage, WC-2026 league id/season. Live docs win → update COMPLETION.md if they
+  differ. Map JSON→value objects; test with mock httpx (no network). Add `httpx` dep.
