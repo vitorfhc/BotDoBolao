@@ -71,8 +71,9 @@ operating rules are in `RALPH.md`.
   - [ ] `bot/bets_cog.py` — `/apostar` (game select → category select → modal/select → confirm/upsert),
     `/minhas_apostas` (list open/settled + delete control), `/jogos` (open games + what's left).
     **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`, followup).**
-  - [ ] `bot/subscribe_cog.py` — `/inscrever` & `/sair` (add/remove Tigrinhos role; ephemeral; handle
-    missing-perm/hierarchy → pt-BR + admin alert). **Ground `member.add_roles`/`remove_roles`.**
+  - [x] `bot/subscribe_cog.py` — pure `decide_subscribe` (already/not subscribed → reply + perform?) +
+    `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
+    grounded vs discord.py role ops; 5 tests.
 - [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
 - [ ] **M8 — Board cog:** `/placar geral|semana` with tie-breaks.
 - [ ] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
@@ -199,10 +200,13 @@ operating rules are in `RALPH.md`.
   `delete_bet` (pure DB CRUD; auto-create player; pt-BR `GameNotFoundError`/`GameNotOpenError`). 8 tests.
 - **Iter 22 (M6 render_payload):** pt-BR `render_payload` (score/scorer/BTTS/winner/over-under) +
   selection label maps. 6 tests. Bet line = `CATEGORY_LABELS_PT[cat]: render_payload(payload)`.
-- **Next:** M6 — the **subscribe cog** (`/inscrever`/`/sair`) is the simplest cog: add/remove the
-  Tigrinhos role on `interaction.user` (a Member), ephemeral replies, friendly "já inscrito"/"não
-  inscrito", handle missing-perm/hierarchy (reuse `role_management_problem`) → pt-BR + log/alert.
-  **Ground `member.add_roles`/`remove_roles`, `guild.get_role`, `interaction.user` as Member,
-  `interaction.response.send_message(ephemeral=True)`.** Keep a thin testable seam if possible
-  (e.g. a pure `subscribe_outcome(has_role, action)` deciding the reply). Then the bets cog
-  (`/apostar` flow, `/minhas_apostas`, `/jogos`) — the largest UI piece — over following iterations.
+- **Iter 23 (M6 subscribe_cog):** pure `decide_subscribe` + `SubscribeCog` (`/inscrever`/`/sair`,
+  member.add_roles/remove_roles, ephemeral, Forbidden→pt-BR). 5 tests. Grounded discord.py role ops.
+- **Next:** M6 — the **bets cog** (`/apostar`, `/minhas_apostas`, `/jogos`) — the largest UI piece.
+  Strategy: build the testable pieces first as pure render/builder functions in text_pt (or a bets_view
+  helper): `render_my_bets(bets+games)` (open vs settled, ✓/✗+pts), `render_open_games(games, bets, tz)`
+  (kickoff local, stage, what's left to predict). Then the `/apostar` component flow (game Select →
+  category Select → Modal[score]/Select[winner/btts/ou/scorer] → confirm → place_bet) as a thin
+  `ui.View` layer over `parse_payload`+`place_bet`. **Ground discord.py UI (`ui.View`, `ui.Select`,
+  `ui.Button`, `ui.Modal`, `followup`/`edit_message`).** Likely 2-3 iterations: (a) render helpers +
+  `/minhas_apostas`+`/jogos`; (b) `/apostar` view flow.
