@@ -322,27 +322,31 @@ def should_poll(
     return now - last_poll >= timedelta(minutes=stuck_recheck_minutes)
 
 
-async def collect_settlements(
+async def collect_poll_outcome(
     session: Session, provider: FootballProvider, settings: Settings, *, now: datetime
-) -> list[SettledGame]:
-    """Settle every unsettled game (kicked off within ``settle_grace_hours``) that is now finished.
+) -> PollOutcome:
+    """Run one poll pass over every pollable game and return its outcome (COMPLETION.md §9.2/§9.3).
 
-    Self-healing (COMPLETION.md §9.2): a game keeps being polled until it settles or outlives the
-    grace, so late finishes (extra time, penalties) and API status lag recover with no manual step.
-    Returns immediately with no provider call if nothing is pollable. One date-windowed call fetches
-    current statuses for all games at once; only games reported finished cost an extra per-game
-    request (the goal timeline). May raise ``BudgetExceeded`` (the cog turns it into a skip). No
+    One date-windowed call fetches current status + live score for all games. For each game we:
+    - settle it if now FINISHED (fetching the goal timeline once);
+    - else, while LIVE, announce the kickoff once and any new goals (the live-score diff is the
+      trigger; the goal timeline — fetched only when the score changes — names the scorer).
+
+    Self-healing settlement is unchanged. Dedup state is persisted on the game row, so this is
+    idempotent across restarts. May raise ``BudgetExceeded`` (the cog turns it into a skip). No
     commit — the caller commits.
     """
     games = GameRepository(session)
     pollable = games.list_active(now, settings.settle_grace_hours)
     if not pollable:
-        return []
+        return PollOutcome(settled=[], kickoffs=[], goals=[])
     results = {
         result.fixture_id: result
         for result in await provider.get_recent_results(settings.settle_grace_hours)
     }
     settled: list[SettledGame] = []
+    kickoffs: list[KickoffNotice] = []
+    goal_notices: list[GoalNotice] = []
     for game in pollable:
         result = results.get(game.fixture_id)
         if result is None:
@@ -353,8 +357,40 @@ async def collect_settlements(
             outcome = apply_settlement(session, full_result, now=now)
             if outcome is not None:
                 settled.append(outcome)
+            continue
+        if result.status is GameStatus.LIVE:
+            if detect_kickoff(status=result.status, kickoff_announced_at=game.kickoff_announced_at):
+                game.kickoff_announced_at = now
+                kickoffs.append(
+                    KickoffNotice(game.fixture_id, game.home_team_name, game.away_team_name)
+                )
+            if result.home_goals is not None or result.away_goals is not None:
+                delta = detect_goal_deltas(
+                    stored_home=game.last_announced_home_goals,
+                    stored_away=game.last_announced_away_goals,
+                    current_home=result.home_goals,
+                    current_away=result.away_goals,
+                )
+                timeline: tuple[GoalEvent, ...] = ()
+                if delta.has_new:
+                    timeline = (await provider.get_match_result(game.fixture_id)).goals
+                announcements, new_home, new_away = reconcile_goals(
+                    home_team_id=game.home_team_id,
+                    home_team_name=game.home_team_name,
+                    away_team_name=game.away_team_name,
+                    stored_home=game.last_announced_home_goals,
+                    stored_away=game.last_announced_away_goals,
+                    current_home=result.home_goals,
+                    current_away=result.away_goals,
+                    timeline=timeline,
+                )
+                game.last_announced_home_goals = new_home
+                game.last_announced_away_goals = new_away
+                goal_notices.extend(
+                    GoalNotice(game.fixture_id, announcement) for announcement in announcements
+                )
     session.flush()
-    return settled
+    return PollOutcome(settled=settled, kickoffs=kickoffs, goals=goal_notices)
 
 
 def render_results_message(settled: SettledGame, *, scorer_name: str | None) -> str:
@@ -447,7 +483,8 @@ class PollCog(commands.Cog):
             ):
                 self._last_poll = now
                 provider = self.provider_factory(session)
-                settled = await collect_settlements(session, provider, self.settings, now=now)
+                outcome = await collect_poll_outcome(session, provider, self.settings, now=now)
+                settled = outcome.settled
                 results = [
                     (game, resolve_scorer_name(session, game.first_scorer_player_id))
                     for game in settled

@@ -10,7 +10,7 @@ import httpx
 import pytest
 from sqlalchemy.orm import Session
 
-from tigrinho.bot.poll_cog import collect_settlements
+from tigrinho.bot.poll_cog import collect_poll_outcome
 from tigrinho.config import Settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
 from tigrinho.db.models import Base, Game
@@ -84,7 +84,7 @@ async def test_budget_cap_blocks_http_in_poll(session: Session) -> None:
     provider = ApiFootballProvider(league_id=1, season=2026, budget=budget, client=client)
     try:
         with pytest.raises(BudgetExceeded):
-            await collect_settlements(session, provider, _settings(), now=NOW)
+            await collect_poll_outcome(session, provider, _settings(), now=NOW)
         assert called is False  # the daily cap prevented the network call entirely
     finally:
         await client.aclose()
