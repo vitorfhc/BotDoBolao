@@ -81,6 +81,16 @@ class GameRepository:
         )
         return list(self.session.scalars(stmt))
 
+    def list_stuck(self, now: datetime, window_hours: int) -> list[Game]:
+        """Unsettled games already past their match window (need manual settlement — §9.2)."""
+        cutoff = now - timedelta(hours=window_hours)
+        stmt = (
+            select(Game)
+            .where(Game.settled_at.is_(None), Game.kickoff_utc < cutoff)
+            .order_by(Game.kickoff_utc)
+        )
+        return list(self.session.scalars(stmt))
+
 
 class BetRepository:
     """One bet per (game, player, category); editing overwrites in place (COMPLETION.md §8)."""

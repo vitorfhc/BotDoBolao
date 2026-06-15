@@ -13,12 +13,13 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from tigrinho.config import Settings
 from tigrinho.db.repositories import BetRepository, GameRepository
 from tigrinho.domain.bets import BetCategory
 from tigrinho.domain.scoring import first_genuine_scorer
 from tigrinho.domain.settlement import BetInput, match_facts_from_result, settle_game
 from tigrinho.domain.text_pt import CATEGORY_LABELS_PT
-from tigrinho.providers.base import GameStatus, MatchResult
+from tigrinho.providers.base import FootballProvider, GameStatus, MatchResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +97,36 @@ def apply_settlement(session: Session, result: MatchResult, *, now: datetime) ->
         first_scorer_player_id=first_scorer,
         players=players,
     )
+
+
+async def collect_settlements(
+    session: Session, provider: FootballProvider, settings: Settings, *, now: datetime
+) -> list[SettledGame]:
+    """Poll active games and settle any that are now finished (COMPLETION.md §9.2).
+
+    If there are no active games, returns immediately **without any provider call**. For each
+    finished active game, fetches the full result (goal timeline) and settles it. May raise
+    ``BudgetExceeded`` from the provider (the cog turns it into a skip). No commit — caller commits.
+    """
+    games = GameRepository(session)
+    active = games.list_active(now, settings.match_window_hours)
+    if not active:
+        return []
+    active_ids = {game.fixture_id for game in active}
+    settled: list[SettledGame] = []
+    for result in await provider.get_live_results():
+        if result.fixture_id not in active_ids:
+            continue
+        game = games.get(result.fixture_id)
+        if game is not None:
+            game.status = result.status.value
+        if result.status is GameStatus.FINISHED:
+            full_result = await provider.get_match_result(result.fixture_id)
+            outcome = apply_settlement(session, full_result, now=now)
+            if outcome is not None:
+                settled.append(outcome)
+    session.flush()
+    return settled
 
 
 def render_results_message(settled: SettledGame, *, scorer_name: str | None) -> str:
