@@ -111,9 +111,10 @@ operating rules are in `RALPH.md`.
     `apply_settlement` (idempotent re-settle); prints summary; 3 CliRunner tests.
   - [x] `budget show` (group 3, counter+remaining) + `board recalc [--periodo]` (group 4, rebuild
     standings from settled bets); added `_settings`/`_utcnow` seams; 3 CliRunner tests.
-  - [ ] Group 3 rest: `squads seed <team_id>` (provider→`SquadRepository.replace_team`) + `sync run`
-    (force daily sync) — need an async-in-CLI + a `_build_provider(settings, session)` helper.
-  - [ ] Group 4 rest: `db dump` (export tables). Group 1 rest: `games show`, `bets list`, delete.
+  - [x] `tigrinho/bootstrap.py::build_provider` (config→provider: fake or ApiFootball+budget; shared
+    w/ M10 root) + CLI `squads seed <team_id>` (provider.get_squad→`replace_team`) + `sync run`
+    (`collect_sync_messages`); `asyncio.run` inside sync Typer cmds; `_build_provider` seam; 4 tests.
+  - [ ] Group 4 `db dump` (export tables) + group 1 `games show`/`bets list`. Then M9 done.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
 
@@ -275,11 +276,14 @@ operating rules are in `RALPH.md`.
   3 CliRunner tests. NB: cli imports apply_settlement from bot.poll_cog (pulls discord; fine).
 - **Iter 37 (M9 budget show + board recalc):** DB-only commands; added `_settings`/`_utcnow` seams
   (refactored `_open_session` to use `_settings`). 3 CliRunner tests.
-- **Next:** M9 group 3 cache/sync — add a shared `_build_provider(settings, session) -> FootballProvider`
-  (fake if provider_mode=fake, else ApiFootballProvider with RequestBudget(ApiUsageRepository(session))+
-  httpx client) usable by CLI **and** the M10 composition root. Then `squads seed <team_id>` (asyncio.run
-  provider.get_squad → SquadRepository.replace_team; Typer cmd is sync, runs the coro) and `sync run`
-  (asyncio.run collect_sync_messages; print counts). Test `_build_provider` (fake path) + squads seed
-  (FakeProvider via seam). Then group-1 reads (`games show`, `bets list`) + `db dump` → **M9 done → M10
-  deploy** (Dockerfile, compose, entrypoint `alembic upgrade head`, .env.example, config.example.yaml,
-  full README §15.1, CLAUDE.md, + the bot composition root wiring all cogs).
+- **Iter 38 (M9 group 3):** `bootstrap.build_provider` (shared composition helper) + CLI `squads seed`
+  + `sync run` (asyncio.run inside sync Typer cmds; `_build_provider` seam). 4 tests.
+- **Next:** finish M9 — `games show <fixture_id>` + `bets list [--game/--player]` (group 1 reads;
+  `bets list` needs a `BetRepository.list_all` or use list_for_game/player) + `db dump` (group 4: print
+  row counts per table, or dump rows — keep simple/testable). Then **M9 done → M10 deploy**: Dockerfile
+  (python:3.12-slim, non-root, uv/pip deps), entrypoint (`alembic upgrade head` then run bot),
+  docker-compose.yml (env_file, /data volume, config.yaml bind-mount, CONFIG_PATH), `.env.example`,
+  `config.example.yaml`, **full README (§15.1)**, `CLAUDE.md` (grounding + secrets-split + /ajuda-sync
+  maintenance rule), and the **bot composition root** (`run()` in bootstrap: load_settings →
+  configure_logging → build engine/session_factory + shared httpx client + provider_factory → construct
+  TigrinhoBot, add Sync/Poll/Bets/Subscribe/Board cogs in setup_hook → bot.run(token)). Then M11.

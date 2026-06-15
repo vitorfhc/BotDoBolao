@@ -10,18 +10,27 @@ Tests override :func:`_open_session` to point at a temp database.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Literal
 
 import typer
 from sqlalchemy.orm import Session
 
+from tigrinho.bootstrap import build_provider
 from tigrinho.bot.board_cog import Period, build_standing_inputs, compute_standings
 from tigrinho.bot.poll_cog import apply_settlement
+from tigrinho.bot.sync_cog import collect_sync_messages
 from tigrinho.config import Settings, load_settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
-from tigrinho.db.repositories import ApiUsageRepository, GameRepository, PlayerRepository
-from tigrinho.providers.base import GameStatus, GoalEvent, MatchResult, Stage
+from tigrinho.db.models import SquadPlayer as SquadPlayerRow
+from tigrinho.db.repositories import (
+    ApiUsageRepository,
+    GameRepository,
+    PlayerRepository,
+    SquadRepository,
+)
+from tigrinho.providers.base import FootballProvider, GameStatus, GoalEvent, MatchResult, Stage
 
 app = typer.Typer(help="TigrinhoDaCopa — CLI administrativa.", no_args_is_help=True)
 games_app = typer.Typer(help="CRUD de jogos.", no_args_is_help=True)
@@ -30,12 +39,16 @@ bets_app = typer.Typer(help="CRUD de apostas.", no_args_is_help=True)
 result_app = typer.Typer(help="Resultado manual e reapuração.", no_args_is_help=True)
 budget_app = typer.Typer(help="Orçamento de requisições da API.", no_args_is_help=True)
 board_app = typer.Typer(help="Recalcular o placar.", no_args_is_help=True)
+squads_app = typer.Typer(help="Cache de elencos.", no_args_is_help=True)
+sync_app = typer.Typer(help="Sincronização de jogos.", no_args_is_help=True)
 app.add_typer(games_app, name="games")
 app.add_typer(players_app, name="players")
 app.add_typer(bets_app, name="bets")
 app.add_typer(result_app, name="result")
 app.add_typer(budget_app, name="budget")
 app.add_typer(board_app, name="board")
+app.add_typer(squads_app, name="squads")
+app.add_typer(sync_app, name="sync")
 
 
 def _settings() -> Settings:
@@ -47,6 +60,11 @@ def _open_session() -> Session:
     """Open a DB session from the validated config (overridden in tests)."""
     engine = create_db_engine(_settings().db_path)
     return create_session_factory(engine)()
+
+
+def _build_provider(settings: Settings, session: Session) -> FootballProvider:
+    """Build the configured provider for a one-shot CLI call (overridden in tests)."""
+    return build_provider(settings, session)
 
 
 def _utcnow() -> datetime:
@@ -159,6 +177,35 @@ def board_recalc(
             f"{row.rank}\t{row.player_name}\t{row.total_points} pt\t"
             f"(exatos {row.exact_hits}, acertos {row.correct_bets})"
         )
+
+
+@squads_app.command("seed")
+def squads_seed(team_id: int = typer.Argument(..., help="team_id do time a cadastrar.")) -> None:
+    """Busca o elenco no provider e o cacheia (necessário para 'primeiro a marcar' — §13)."""
+    settings = _settings()
+    with _open_session() as session:
+        provider = _build_provider(settings, session)
+        players = asyncio.run(provider.get_squad(team_id))
+        rows = [
+            SquadPlayerRow(player_id=p.player_id, team_id=team_id, name=p.name, position=p.position)
+            for p in players
+        ]
+        count = SquadRepository(session).replace_team(team_id, rows)
+        session.commit()
+    typer.echo(f"Elenco do time {team_id}: {count} jogador(es) cadastrado(s).")
+
+
+@sync_app.command("run")
+def sync_run() -> None:
+    """Força a sincronização de jogos agora (insere/atualiza/anula) — §13."""
+    settings = _settings()
+    with _open_session() as session:
+        provider = _build_provider(settings, session)
+        messages = asyncio.run(collect_sync_messages(session, provider, settings, now=_utcnow()))
+        session.commit()
+    typer.echo(f"Sincronização concluída: {len(messages)} aviso(s).")
+    for message in messages:
+        typer.echo(message)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint
