@@ -156,7 +156,7 @@ async def test_collect_settles_finished_active_game(session: Session) -> None:
     assert len(settled) == 1
     assert settled[0].players[0].total_points == 2  # WINNER HOME correct
     game = GameRepository(session).get(1)
-    assert game is not None and game.status == "FINISHED" and game.first_scorer_player_id == 7
+    assert game is not None and game.status == "FINISHED"
 
 
 async def test_collect_live_game_updates_status_without_settling(session: Session) -> None:

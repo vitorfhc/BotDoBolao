@@ -77,7 +77,6 @@ def test_result_set_grades_and_updates(open_session: Callable[[], Session]) -> N
         game = GameRepository(session).get(1)
         assert game is not None
         assert game.status == "FINISHED"
-        assert game.first_scorer_player_id == 7
 
 
 def test_result_set_resettle_overwrites(open_session: Callable[[], Session]) -> None:

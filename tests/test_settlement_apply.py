@@ -118,7 +118,6 @@ def test_apply_settlement_grades_and_updates_game(session: Session) -> None:
     assert game is not None
     assert game.status == "FINISHED"
     assert game.home_goals_90 == 2
-    assert game.first_scorer_player_id == 7
     assert game.settled_at == NOW
 
     totals = {p.player_discord_id: p.total_points for p in settled.players}
@@ -146,7 +145,6 @@ def test_render_results_message() -> None:
         away_team_name="Argentina",
         home_goals_90=2,
         away_goals_90=1,
-        first_scorer_player_id=7,
         players=[
             PlayerResult(
                 player_discord_id=100,
@@ -158,23 +156,21 @@ def test_render_results_message() -> None:
             ),
         ],
     )
-    text = render_results_message(settled, scorer_name="Neymar")
+    text = render_results_message(settled)
     assert "Brasil 2x1 Argentina" in text
-    assert "Neymar" in text
     assert "<@100>" in text and "<@200>" in text  # all participants mentioned
     assert "7" in text
 
 
-def test_render_results_message_no_scorer() -> None:
+def test_render_results_message_no_players() -> None:
     settled = SettledGame(
         fixture_id=1,
         home_team_name="Brasil",
         away_team_name="Argentina",
         home_goals_90=0,
         away_goals_90=0,
-        first_scorer_player_id=None,
         players=[],
     )
-    text = render_results_message(settled, scorer_name=None)
+    text = render_results_message(settled)
     assert "0x0" in text
-    assert "ninguém" in text.lower()
+    assert "Pontos" not in text  # no points section when nobody bet

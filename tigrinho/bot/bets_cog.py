@@ -16,10 +16,9 @@ from discord.ext import commands
 from sqlalchemy.orm import Session
 
 from tigrinho.config import Settings
-from tigrinho.db.repositories import BetRepository, GameRepository, SquadRepository
+from tigrinho.db.repositories import BetRepository, GameRepository
 from tigrinho.domain.bets import (
     BetCategory,
-    FirstScorerPayload,
     InvalidBetPayload,
     parse_payload_json,
 )
@@ -40,10 +39,8 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def build_my_bet_lines(
-    session: Session, player_discord_id: int, scorer_resolver: Callable[[int], str | None]
-) -> list[MyBetLine]:
-    """Build a player's bet lines (resolving first-scorer names) for `/minhas_apostas`."""
+def build_my_bet_lines(session: Session, player_discord_id: int) -> list[MyBetLine]:
+    """Build a player's bet lines for `/minhas_apostas`."""
     games = GameRepository(session)
     lines: list[MyBetLine] = []
     for bet in BetRepository(session).list_for_player(player_discord_id):
@@ -53,14 +50,8 @@ def build_my_bet_lines(
         category = BetCategory(bet.category)
         try:
             payload = parse_payload_json(category, bet.payload_json)
-            scorer_name = (
-                scorer_resolver(payload.player_id)
-                if isinstance(payload, FirstScorerPayload)
-                else None
-            )
             value = render_payload(
                 payload,
-                scorer_name=scorer_name,
                 home_name=game.home_team_name,
                 away_name=game.away_team_name,
             )
@@ -121,12 +112,7 @@ class BetsCog(commands.Cog):
     async def minhas_apostas(self, interaction: discord.Interaction) -> None:
         now = self._clock()
         with self.session_factory() as session:
-
-            def resolver(player_id: int) -> str | None:
-                squad_player = SquadRepository(session).get(player_id)
-                return squad_player.name if squad_player is not None else None
-
-            lines = build_my_bet_lines(session, interaction.user.id, resolver)
+            lines = build_my_bet_lines(session, interaction.user.id)
             open_choices = build_open_bet_choices(session, interaction.user.id, now=now)
         text = render_my_bets(lines)
         if not open_choices:

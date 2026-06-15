@@ -1,8 +1,8 @@
 """The /apostar component flow + its pure helpers (COMPLETION.md §8.1, §8.2).
 
-Pure helpers (knockout DRAW-hiding, Select pagination, labels) are unit-tested; the View/Select/
-Modal glue is thin over ``parse_payload`` + ``bets_logic.place_bet``. FIRST_SCORER's paginated squad
-select is layered on separately. Bets close at kickoff (place_bet re-checks with a fresh clock).
+Pure helpers (knockout DRAW-hiding, labels) are unit-tested; the View/Select/Modal glue is thin
+over ``parse_payload`` + ``bets_logic.place_bet``. Bets close at kickoff (place_bet re-checks with
+a fresh clock).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from tigrinho.config import Settings
 from tigrinho.db.models import Game
-from tigrinho.db.repositories import BetRepository, GameRepository, SquadRepository
+from tigrinho.db.repositories import BetRepository, GameRepository
 from tigrinho.domain.bets import (
     BetCategory,
     BetPayload,
@@ -40,14 +40,13 @@ from tigrinho.providers.base import Stage
 from .bets_logic import BetError, delete_bet, place_bet
 from .sync_planning import format_kickoff_pt
 
-# A Discord Select may show at most 25 options (so long squads must be paginated).
+# A Discord Select may show at most 25 options.
 DISCORD_SELECT_LIMIT = 25
 VIEW_TIMEOUT = 300
 
 # Categories offered by /apostar, in §8.1 points order.
 APOSTAR_CATEGORIES: tuple[BetCategory, ...] = (
     BetCategory.EXACT_SCORE,
-    BetCategory.FIRST_SCORER,
     BetCategory.BTTS,
     BetCategory.WINNER,
     BetCategory.OVER_UNDER,
@@ -59,12 +58,6 @@ def winner_selection_options(stage: Stage) -> list[WinnerSelection]:
     if stage is Stage.KNOCKOUT:
         return [WinnerSelection.HOME, WinnerSelection.AWAY]
     return [WinnerSelection.HOME, WinnerSelection.DRAW, WinnerSelection.AWAY]
-
-
-def paginate[T](items: Sequence[T], page_size: int = DISCORD_SELECT_LIMIT) -> list[list[T]]:
-    """Split items into pages of <= ``page_size`` (always at least one, possibly empty, page)."""
-    pages = [list(items[i : i + page_size]) for i in range(0, len(items), page_size)]
-    return pages or [[]]
 
 
 def game_choice_label(home_name: str, away_name: str, kickoff_local: datetime) -> str:
@@ -116,23 +109,6 @@ class GameChoice:
     label: str
     stage: Stage
     matchup: Matchup
-
-
-@dataclass(frozen=True, slots=True)
-class ScorerChoice:
-    """A squad player offered in the FIRST_SCORER Select."""
-
-    player_id: int
-    name: str
-
-
-def load_scorer_choices(
-    session: Session, home_team_id: int, away_team_id: int
-) -> list[ScorerChoice]:
-    """Both teams' cached squads as scorer choices (empty if squads aren't seeded yet)."""
-    repo = SquadRepository(session)
-    players = [*repo.list_for_team(home_team_id), *repo.list_for_team(away_team_id)]
-    return [ScorerChoice(player_id=p.player_id, name=p.name) for p in players]
 
 
 def games_to_choices(games: Sequence[Game], tz: tzinfo) -> list[GameChoice]:
@@ -228,27 +204,6 @@ class CategorySelect(ui.Select[ui.View]):
         if category is BetCategory.EXACT_SCORE:
             await interaction.response.send_modal(
                 ScoreModal(self._ctx, fixture_id=self._fixture_id, matchup=self._matchup)
-            )
-            return
-        if category is BetCategory.FIRST_SCORER:
-            with self._ctx.session_factory() as session:
-                game = GameRepository(session).get(self._fixture_id)
-                scorers = (
-                    load_scorer_choices(session, game.home_team_id, game.away_team_id)
-                    if game is not None
-                    else []
-                )
-            if not scorers:
-                await interaction.response.edit_message(
-                    content="O elenco ainda não foi cadastrado — peça ao admin para seedar.",
-                    view=None,
-                )
-                return
-            await interaction.response.edit_message(
-                content=f"**{self._matchup}** — quem marca primeiro?",
-                view=build_squad_view(
-                    self._ctx, fixture_id=self._fixture_id, matchup=self._matchup, scorers=scorers
-                ),
             )
             return
         view = build_value_view(
@@ -373,111 +328,6 @@ def build_value_view(
     view.add_item(
         ValueSelect(ctx, fixture_id=fixture_id, matchup=matchup, category=category, options=options)
     )
-    return view
-
-
-class ScorerSelect(ui.Select[ui.View]):
-    def __init__(
-        self,
-        ctx: FlowContext,
-        *,
-        fixture_id: int,
-        matchup: Matchup,
-        scorers: Sequence[ScorerChoice],
-    ) -> None:
-        super().__init__(
-            placeholder="Escolha o jogador",
-            options=[
-                discord.SelectOption(label=s.name[:100], value=str(s.player_id)) for s in scorers
-            ],
-        )
-        self._ctx = ctx
-        self._fixture_id = fixture_id
-        self._matchup = matchup
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        try:
-            payload = parse_payload(BetCategory.FIRST_SCORER, {"player_id": int(self.values[0])})
-        except (ValueError, InvalidBetPayload):
-            await interaction.response.edit_message(content="❌ Jogador inválido.", view=None)
-            return
-        await _finalize_bet(
-            self._ctx,
-            interaction,
-            fixture_id=self._fixture_id,
-            matchup=self._matchup,
-            category=BetCategory.FIRST_SCORER,
-            payload=payload,
-            edit=True,
-        )
-
-
-class PageButton(ui.Button[ui.View]):
-    def __init__(
-        self,
-        ctx: FlowContext,
-        *,
-        fixture_id: int,
-        matchup: Matchup,
-        scorers: Sequence[ScorerChoice],
-        target_page: int,
-        label: str,
-        disabled: bool,
-    ) -> None:
-        super().__init__(label=label, disabled=disabled, style=discord.ButtonStyle.secondary)
-        self._ctx = ctx
-        self._fixture_id = fixture_id
-        self._matchup = matchup
-        self._scorers = scorers
-        self._target_page = target_page
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        view = build_squad_view(
-            self._ctx,
-            fixture_id=self._fixture_id,
-            matchup=self._matchup,
-            scorers=self._scorers,
-            page=self._target_page,
-        )
-        await interaction.response.edit_message(view=view)
-
-
-def build_squad_view(
-    ctx: FlowContext,
-    *,
-    fixture_id: int,
-    matchup: Matchup,
-    scorers: Sequence[ScorerChoice],
-    page: int = 0,
-) -> ui.View:
-    """FIRST_SCORER step: a (paginated) Select of both teams' players, with ◀/▶ buttons."""
-    pages = paginate(scorers)
-    page = max(0, min(page, len(pages) - 1))
-    view = ui.View(timeout=VIEW_TIMEOUT)
-    view.add_item(ScorerSelect(ctx, fixture_id=fixture_id, matchup=matchup, scorers=pages[page]))
-    if len(pages) > 1:
-        view.add_item(
-            PageButton(
-                ctx,
-                fixture_id=fixture_id,
-                matchup=matchup,
-                scorers=scorers,
-                target_page=page - 1,
-                label="◀",
-                disabled=page == 0,
-            )
-        )
-        view.add_item(
-            PageButton(
-                ctx,
-                fixture_id=fixture_id,
-                matchup=matchup,
-                scorers=scorers,
-                target_page=page + 1,
-                label="▶",
-                disabled=page >= len(pages) - 1,
-            )
-        )
     return view
 
 

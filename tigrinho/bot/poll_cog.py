@@ -17,9 +17,8 @@ from discord.ext import commands, tasks
 from sqlalchemy.orm import Session
 
 from tigrinho.config import Settings
-from tigrinho.db.repositories import BetRepository, GameRepository, SquadRepository
+from tigrinho.db.repositories import BetRepository, GameRepository
 from tigrinho.domain.bets import BetCategory
-from tigrinho.domain.scoring import first_genuine_scorer
 from tigrinho.domain.settlement import BetInput, match_facts_from_result, settle_game
 from tigrinho.domain.text_pt import CATEGORY_LABELS_PT
 from tigrinho.logging import get_logger
@@ -53,7 +52,6 @@ class SettledGame:
     away_team_name: str
     home_goals_90: int
     away_goals_90: int
-    first_scorer_player_id: int | None
     players: list[PlayerResult]
 
 
@@ -84,12 +82,10 @@ def apply_settlement(session: Session, result: MatchResult, *, now: datetime) ->
             (BetCategory(row.category), outcome.is_correct, outcome.points_awarded)
         )
 
-    first_scorer = first_genuine_scorer(result.goals)
     game.status = GameStatus.FINISHED.value
     game.home_goals_90 = facts.home_goals_90
     game.away_goals_90 = facts.away_goals_90
     game.advancing_team_id = result.advancing_team_id
-    game.first_scorer_player_id = first_scorer
     game.settled_at = now
     session.flush()
 
@@ -107,7 +103,6 @@ def apply_settlement(session: Session, result: MatchResult, *, now: datetime) ->
         away_team_name=game.away_team_name,
         home_goals_90=facts.home_goals_90,
         away_goals_90=facts.away_goals_90,
-        first_scorer_player_id=first_scorer,
         players=players,
     )
 
@@ -172,18 +167,12 @@ async def collect_settlements(
     return settled
 
 
-def render_results_message(settled: SettledGame, *, scorer_name: str | None) -> str:
-    """Render the pt-BR results message: 90' score, first scorer, each player's points (§8.3)."""
+def render_results_message(settled: SettledGame) -> str:
+    """Render the pt-BR results message: 90' score and each player's points (§8.3)."""
     lines = [
         f"🏁 **{settled.home_team_name} {settled.home_goals_90}x{settled.away_goals_90} "
         f"{settled.away_team_name}** — resultado final (90')"
     ]
-    if settled.first_scorer_player_id is not None:
-        shown = scorer_name if scorer_name is not None else f"#{settled.first_scorer_player_id}"
-        lines.append(f"⚽ Primeiro a marcar: {shown}")
-    else:
-        lines.append("⚽ Primeiro a marcar: ninguém (0x0 ou só gol contra)")
-
     if settled.players:
         lines.append("🏆 **Pontos:**")
         for player in sorted(settled.players, key=lambda p: (-p.total_points, p.player_discord_id)):
@@ -195,14 +184,6 @@ def render_results_message(settled: SettledGame, *, scorer_name: str | None) -> 
                 f"<@{player.player_discord_id}>: {player.total_points} pt(s) — {breakdown}"
             )
     return "\n".join(lines)
-
-
-def resolve_scorer_name(session: Session, player_id: int | None) -> str | None:
-    """Resolve a scorer's display name from the cached squad (``None`` if unknown)."""
-    if player_id is None:
-        return None
-    squad_player = SquadRepository(session).get(player_id)
-    return squad_player.name if squad_player is not None else None
 
 
 class PollCog(commands.Cog):
@@ -252,7 +233,7 @@ class PollCog(commands.Cog):
         with self.session_factory() as session:
             games = GameRepository(session)
             pollable = games.list_active(now, self.settings.settle_grace_hours)
-            results: list[tuple[SettledGame, str | None]] = []
+            results: list[SettledGame] = []
             if should_poll(
                 pollable_kickoffs=[game.kickoff_utc for game in pollable],
                 now=now,
@@ -262,11 +243,7 @@ class PollCog(commands.Cog):
             ):
                 self._last_poll = now
                 provider = self.provider_factory(session)
-                settled = await collect_settlements(session, provider, self.settings, now=now)
-                results = [
-                    (game, resolve_scorer_name(session, game.first_scorer_player_id))
-                    for game in settled
-                ]
+                results = await collect_settlements(session, provider, self.settings, now=now)
             stuck = [
                 (game.fixture_id, f"{game.home_team_name} x {game.away_team_name}")
                 for game in games.list_stuck(now, self.settings.settle_grace_hours)
@@ -275,7 +252,7 @@ class PollCog(commands.Cog):
         await self._post_results(results)
         await self._alert_stuck(stuck)
 
-    async def _post_results(self, results: list[tuple[SettledGame, str | None]]) -> None:
+    async def _post_results(self, results: list[SettledGame]) -> None:
         if not results:
             return
         channel = self.bot.get_channel(self.settings.announce_channel_id)
@@ -285,10 +262,8 @@ class PollCog(commands.Cog):
             )
             return
         allowed = discord.AllowedMentions(users=True)
-        for settled, scorer_name in results:
-            await channel.send(
-                render_results_message(settled, scorer_name=scorer_name), allowed_mentions=allowed
-            )
+        for settled in results:
+            await channel.send(render_results_message(settled), allowed_mentions=allowed)
 
     async def _alert_stuck(self, stuck: list[tuple[int, str]]) -> None:
         for fixture_id, matchup in stuck:

@@ -17,7 +17,6 @@ from tigrinho.db.repositories import BetRepository, PlayerRepository
 from tigrinho.domain.bets import (
     BetCategory,
     ExactScorePayload,
-    FirstScorerPayload,
     WinnerPayload,
     WinnerSelection,
     dump_payload,
@@ -81,13 +80,6 @@ def _seed(session: Session) -> None:
         payload_json=dump_payload(WinnerPayload(WinnerSelection.HOME)),
         now=NOW,
     )
-    bets.upsert(
-        fixture_id=1,
-        player_discord_id=100,
-        category="FIRST_SCORER",
-        payload_json=dump_payload(FirstScorerPayload(7)),
-        now=NOW,
-    )
     settled_bet = bets.upsert(
         fixture_id=2,
         player_discord_id=100,
@@ -103,9 +95,8 @@ def _seed(session: Session) -> None:
 
 def test_build_my_bet_lines(session: Session) -> None:
     _seed(session)
-    lines = build_my_bet_lines(session, 100, scorer_resolver={7: "Neymar"}.get)
+    lines = build_my_bet_lines(session, 100)
     by_cat = {line.category: line for line in lines}
-    assert by_cat[BetCategory.FIRST_SCORER].value == "Neymar"  # resolved scorer name
     assert by_cat[BetCategory.WINNER].value == "Brasil"  # home team name, not "Mandante"
     assert by_cat[BetCategory.WINNER].settled is False
     settled = by_cat[BetCategory.EXACT_SCORE]
@@ -119,7 +110,7 @@ def test_build_open_game_lines(session: Session) -> None:
     lines = build_open_game_lines(session, 100, now=NOW)
     assert len(lines) == 1  # only the open game
     assert lines[0].matchup == "Brasil x Argentina"
-    assert lines[0].bet_categories == frozenset({BetCategory.WINNER, BetCategory.FIRST_SCORER})
+    assert lines[0].bet_categories == frozenset({BetCategory.WINNER})
 
 
 def test_build_open_game_lines_no_bets(session: Session) -> None:
