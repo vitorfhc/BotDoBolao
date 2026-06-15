@@ -114,7 +114,7 @@ class _ConformingProvider:
     async def get_fixtures(self, window_hours: int) -> list[Fixture]:
         return []
 
-    async def get_live_results(self) -> list[MatchResult]:
+    async def get_recent_results(self, lookback_hours: int) -> list[MatchResult]:
         return []
 
     async def get_match_result(self, fixture_id: int) -> MatchResult:

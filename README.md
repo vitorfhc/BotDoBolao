@@ -17,7 +17,8 @@ Feature highlights:
 - **5 bet categories** (exact score, first scorer, both-teams-to-score, winner, over/under 2.5),
   graded on the **90-minute** result.
 - **Component-driven `/apostar`** flow (selects + modal), editable until kickoff.
-- **Automatic settlement** with a results message that mentions each player and their points.
+- **Automatic settlement** (self-healing — late finishers like extra time/penalties settle without
+  manual steps) with a results message that mentions each player and their points.
 - **Scoreboards**: `/placar geral` (whole tournament) and `/placar semana` (current week).
 - **Notifications role** (`@Tigrinhos`) that anyone can opt in/out of — **not** required to bet.
 - **No real money** — just diversão.
@@ -51,7 +52,9 @@ Feature highlights:
 ## 5. Get the API-Football key
 
 1. Sign up at <https://www.api-football.com/> (the dashboard shows your key) → this is `API_FOOTBALL_KEY`.
-2. Note the **free-tier daily request limit** (often 100/day). The bot caps itself at `api_daily_cap`.
+2. Note your plan's **daily request limit** (free tier ~100/day; paid plans much higher). The bot
+   caps itself at `api_daily_cap` (default `3000`, comfortably under a 7,500/day plan) and hard-stops
+   before exceeding it.
 3. **Verify the World Cup 2026 league id and season** against the live API (the defaults are
    `wc_league_id: 1`, `wc_season: 2026`): query the `/leagues` endpoint and confirm the FIFA World Cup
    id, then set `wc_league_id` / `wc_season` in `config.yaml` accordingly.
@@ -65,7 +68,8 @@ cp config.example.yaml config.yaml         # fill the four IDs; adjust settings 
 
 Secrets live in `.env` (gitignored); everything else lives in `config.yaml`. See **COMPLETION.md §4**
 for the full settings table (`provider_mode`, `timezone`, `sync_time`, `poll_interval_minutes`,
-`match_window_hours`, `api_daily_cap`, `db_path`, `log_level`, `log_format`, …).
+`match_window_hours`, `settle_grace_hours`, `stuck_recheck_minutes`, `api_daily_cap`, `db_path`,
+`log_level`, `log_format`, …).
 
 ## 7. Run
 

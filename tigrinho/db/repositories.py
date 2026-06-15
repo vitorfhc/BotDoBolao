@@ -68,7 +68,12 @@ class GameRepository:
         return list(self.session.scalars(stmt))
 
     def list_active(self, now: datetime, window_hours: int) -> list[Game]:
-        """Games to poll: kicked off, still inside the match window, not yet settled (§9.2)."""
+        """Games to poll: kicked off, within ``window_hours`` of kickoff, not yet settled (§9.2).
+
+        ``window_hours`` is a generic cutoff, not necessarily the match window: the poll cog passes
+        ``settle_grace_hours`` so overdue games stay pollable for self-heal until the grace expires
+        (anything past it is ``list_stuck``).
+        """
         earliest_kickoff = now - timedelta(hours=window_hours)
         stmt = (
             select(Game)
@@ -82,7 +87,8 @@ class GameRepository:
         return list(self.session.scalars(stmt))
 
     def list_stuck(self, now: datetime, window_hours: int) -> list[Game]:
-        """Unsettled games already past their match window (need manual settlement — §9.2)."""
+        """Unsettled games already past ``window_hours`` after kickoff. The poll cog passes the
+        settlement grace, so these have outlived self-heal and the admin is alerted (§9.2)."""
         cutoff = now - timedelta(hours=window_hours)
         stmt = (
             select(Game)

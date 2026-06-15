@@ -102,9 +102,11 @@ at startup; the bot MUST refuse to start if any required value is missing or mal
 | `wc_season` | no | `2026` | Season. |
 | `timezone` | no | `America/Sao_Paulo` | Drives sync time, displayed kickoffs, weekly reset. |
 | `sync_time` | no | `06:00` | Daily fixtures sync (local time). |
-| `poll_interval_minutes` | no | `10` | Live-poll cadence during match windows. |
-| `match_window_hours` | no | `3` | How long after kickoff a game stays "active" for polling before forcing a settle/alert. |
-| `api_daily_cap` | no | `100` | Hard ceiling on provider requests per budget day. |
+| `poll_interval_minutes` | no | `1` | Live-poll cadence during match windows (one request per cycle covers all games). |
+| `match_window_hours` | no | `3` | Fast-poll window after kickoff; past it a game is "overdue" (rechecked slowly until the grace). |
+| `settle_grace_hours` | no | `24` | Keep auto-settling a game until this long after kickoff (covers extra time/penalties + API lag); must be ≥ `match_window_hours`. |
+| `stuck_recheck_minutes` | no | `15` | Recheck cadence for overdue games (past the match window, within the grace). |
+| `api_daily_cap` | no | `3000` | Hard ceiling on provider requests per budget day (the paid plan allows 7500). |
 | `api_budget_reset_tz` | no | `UTC` | Timezone whose midnight resets the request counter (API-Football resets at 00:00 UTC). |
 | `db_path` | no | `/data/tigrinho.db` | SQLite file path (mounted volume). |
 | `log_level` | no | `INFO` | Log level. |
@@ -122,9 +124,11 @@ wc_league_id: 1
 wc_season: 2026
 timezone: America/Sao_Paulo
 sync_time: "06:00"
-poll_interval_minutes: 10
+poll_interval_minutes: 1
 match_window_hours: 3
-api_daily_cap: 100
+settle_grace_hours: 24
+stuck_recheck_minutes: 15
+api_daily_cap: 3000
 api_budget_reset_tz: UTC
 db_path: /data/tigrinho.db
 log_level: INFO
@@ -239,7 +243,7 @@ Bets are closed purely by time (`now >= kickoff_utc`), independent of any API ca
 Define `FootballProvider` as a `Protocol` returning **value objects** (never raw JSON):
 
 - `get_fixtures(window_hours: int) -> list[Fixture]` — upcoming WC fixtures within window.
-- `get_live_results() -> list[MatchResult]` — **one** call returning every currently-live WC fixture.
+- `get_recent_results(lookback_hours: int) -> list[MatchResult]` — **one** date-windowed call returning every WC fixture that kicked off within `lookback_hours`, with its current status **including finished ones** (the in-play-only `live=all` feed omits finished matches).
 - `get_match_result(fixture_id: int) -> MatchResult` — final result + goal timeline for one game.
 - `get_squad(team_id: int) -> list[SquadPlayer]` — used for first-scorer selection (cached).
 
@@ -273,13 +277,19 @@ fixtures/results for tests and local development (selected via the `provider_mod
   `detail ∈ {"Normal Goal","Penalty"}` (exclude `"Own Goal"` and `"Missed Penalty"`), and
   `time.elapsed <= 90` (stoppage included; ET goals have `elapsed > 90` and are excluded;
   penalty-shootout events excluded). The earliest such event is the first scorer.
+- **Finished-game detection (settlement):** `?live=all` returns **only in-play** fixtures — finished
+  matches drop out immediately — so the settlement path queries fixtures by **date window**
+  (`/fixtures?league=&season=&from=&to=&timezone=UTC`), which returns each fixture's current
+  `status.short` incl. `FT/AET/PEN`. One call covers all games. (Verified 2026-06 against the live docs.)
+- **Transient errors:** retry timeouts/network errors and HTTP `429/500/502/503/504` with exponential
+  backoff; only a successful request increments the budget counter.
 
 ### 7.3 Request budget (MUST — the hard limit the user requires)
 
 A `RequestBudget` wraps every provider call:
 
 1. Before each request, read today's count from `api_usage` (key = today in `api_budget_reset_tz`).
-2. If `count >= api_daily_cap` (default **100**), **do not make the request**. Raise/return a
+2. If `count >= api_daily_cap` (default **3000**), **do not make the request**. Raise/return a
    `BudgetExceeded` signal; the caller skips the work, logs it, and the bot DMs the admin **once
    per budget day**.
 3. On a successful request, increment the count atomically.
@@ -289,9 +299,11 @@ A `RequestBudget` wraps every provider call:
 `daily fixtures sync` → `settlement reads at full-time` → `live polling`.
 Live polling is the first thing to throttle/skip. Bet **closing never consumes budget** (time-based).
 
-**Budget estimate (typical 4-game day):** 1 sync + ~40 live polls (one call covers all live
-games, every 10 min during match windows) + ~4 scorer reads ≈ **~45 / 100**. Squads are fetched
-once and cached (≈48 one-time calls, run via CLI seeding or spread out — never per-game).
+**Budget estimate (1-min polling):** one date-windowed status call per cycle covers **all** games
+(in-play + finished), so detection is bounded at ~1,440/day even with several stuck games; plus ~2
+reads per finishing game (goal timeline) and 1 daily sync ≈ **~600–1,450 / 3,000** on a busy World
+Cup day (the paid plan allows 7,500). Squads are fetched once and cached (≈48 one-time calls, run
+via CLI seeding — never per-game).
 
 ---
 
@@ -381,16 +393,22 @@ Use /apostar para palpitar (fecha no apito inicial).
 
 ### 9.2 Live polling & auto-settlement
 
-A `tasks.loop(minutes=poll_interval_minutes)`:
-1. Determine **active** games: `kickoff_utc <= now <= kickoff_utc + match_window_hours` and not
-   yet settled. If none, **return without any API call**.
-2. Otherwise make **one** `get_live_results()` call; update `status`/live scores.
-3. For each game now `FINISHED`, run settlement (§8.3), fetching `get_match_result()` once for the
-   goal timeline if needed.
+A `tasks.loop(minutes=poll_interval_minutes)` (default **1 min**) — **self-healing**:
+1. Determine **pollable** games: kicked off and not yet settled, within `settle_grace_hours` of
+   kickoff. If none, **return without any API call**.
+2. **Cadence (`should_poll`, pure):** poll every cycle while any pollable game is within
+   `match_window_hours` (live cadence). Once only **overdue** games remain (past the match window
+   but within the grace), recheck only every `stuck_recheck_minutes` — a stuck game doesn't change
+   minute-to-minute, so this avoids wasting budget.
+3. When polling, make **one** date-windowed `get_recent_results(settle_grace_hours)` call (covers
+   all games, in-play + finished); update each pollable game's `status`. For any now `FINISHED`,
+   run settlement (§8.3), fetching `get_match_result()` once for the goal timeline.
 4. All calls go through `RequestBudget`. If the cap is hit, skip polling, log, DM admin once/day.
 
-**Stuck-game safeguard:** if a game is still unsettled past `kickoff + match_window_hours`
-(missing/late provider data), DM the admin that it **needs manual settlement** via the CLI.
+**Self-heal & stuck safeguard:** a game keeps being auto-settled until it finishes or outlives
+`settle_grace_hours` (24h) — covering extra time/penalties and provider status lag with no manual
+step. Only once a game is **still unsettled past the grace** does the bot DM the admin that it
+**needs manual settlement** via the CLI (no more giving up at the 3h match window).
 
 ---
 
@@ -549,7 +567,7 @@ sections, in order:
 - Own goals never count as "first scorer"; 0-0 or own-goal-only ⇒ all first-scorer bets lose.
 - Over/Under 2.5: Over = total90 ≥ 3, Under = total90 ≤ 2.
 - Canonical game id = provider `fixture_id`; reschedule updates in place; cancel ⇒ VOID + bets voided + notify.
-- Hard stop at `api_daily_cap` (default 100) requests/day; priority sync > settlement > polling.
+- Hard stop at `api_daily_cap` (default 3000) requests/day; priority sync > settlement > polling.
 - Weekly board = current Mon→Sun in `America/Sao_Paulo`; full board = whole tournament.
 - Secrets live in `.env`; every other setting lives in `config.yaml`.
 - Ground every external API/library in current docs via web search **before** coding it (live docs win).

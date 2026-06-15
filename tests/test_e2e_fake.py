@@ -104,7 +104,7 @@ async def test_end_to_end_fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         session.commit()
 
     # 3) SETTLE — game finished 2x1 (Brasil), first scorer #7; poll settles it within the window.
-    provider.set_live_results([MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, (), None)])
+    provider.set_recent_results([MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, (), None)])
     provider.set_match_result(
         MatchResult(
             1,

@@ -29,6 +29,7 @@ def _settings() -> Settings:
         announce_channel_id=222,
         tigrinhos_role_id=333,
         admin_user_id=444,
+        api_daily_cap=100,  # pin so the budget-show assertions don't depend on the default
     )
 
 

@@ -96,8 +96,10 @@ class FootballProvider(Protocol):
         """Upcoming World Cup fixtures within ``window_hours`` of now."""
         ...
 
-    async def get_live_results(self) -> list[MatchResult]:
-        """One call returning every currently-live World Cup fixture."""
+    async def get_recent_results(self, lookback_hours: int) -> list[MatchResult]:
+        """Current results for every World Cup fixture that kicked off within ``lookback_hours``
+        of now — **including finished ones**. The live-only feed omits finished matches, so the
+        settlement path uses this date-windowed query (one call covers all in-play + finished)."""
         ...
 
     async def get_match_result(self, fixture_id: int) -> MatchResult:

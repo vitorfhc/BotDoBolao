@@ -321,3 +321,20 @@ operating rules are in `RALPH.md`.
 - **Iter 47 (M11 coverage + FINAL):** domain 100% line+branch (+ knockout-no-advancing edge test).
   Final verification: ruff+format clean, mypy --strict (85 files) clean, pytest **300 passed**,
   `docker compose config` VALID, all required files present, M0–M11 all checked. **Build complete.**
+
+## Post-launch enhancements
+
+- **2026-06-15 — Reliable & snappier settlement (`feat/reliable-polling`):** the API plan was
+  upgraded to 7,500 req/day. Spec: `docs/superpowers/specs/2026-06-15-reliable-polling-design.md`.
+  - **Finding (rule #1):** `/fixtures?live=all` returns **in-play only**, so finished games were never
+    detected — a latent bug. Settlement detection now uses a **date-windowed** `/fixtures?from=&to=`
+    query (`get_recent_results`) that includes `FT/AET/PEN`; one call covers all games.
+  - **Self-heal:** poll any unsettled game within `settle_grace_hours` (24h) and auto-settle late
+    finishers (extra time/penalties, API lag); DM the admin only **after** the grace, not at the old
+    3h cliff. Overdue games rechecked every `stuck_recheck_minutes` (15) via the pure `should_poll`.
+  - **Retry:** `retry_async` (pure, injected sleep) retries transient httpx errors (timeouts/network,
+    `429/5xx`) with exponential backoff; only successful requests burn the budget.
+  - **Config:** `poll_interval_minutes` 10→1, `api_daily_cap` 100→3000; new `settle_grace_hours`,
+    `stuck_recheck_minutes` (with a fail-fast `grace ≥ window` check). COMPLETION.md §4/§7/§9.2 +
+    README updated.
+  - Gates green: ruff + format + mypy --strict clean, **pytest 312 passed**.
