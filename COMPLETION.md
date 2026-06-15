@@ -413,6 +413,27 @@ ping**):
 
 Both are restart-safe and idempotent (dedup state persists on the game row).
 
+### 9.4 Pre-game reminder (`reminder_lead_minutes`, default 60)
+
+A separate `tasks.loop(minutes=1)` (`ReminderCog`) — **DB-only, no provider call**. Each tick it
+selects open games (`list_open`) whose kickoff is within `reminder_lead_minutes` and that haven't
+been reminded (`games.reminder_sent_at is None`), and posts **one consolidated** pt-BR message to
+`announce_channel_id` **pinging `@Tigrinhos`** to place bets before the opening whistle.
+
+- **Window:** a game is due when `now` is in `[kickoff - reminder_lead_minutes, kickoff)`. The upper
+  bound means a reminder still **fires late** (e.g. after a restart) as long as bets are open, and
+  never fires once the game has kicked off.
+- **Channel-safe:** the channel is resolved **before** `reminder_sent_at` is committed; if it's
+  unavailable (cold cache after a restart) the tick returns without marking, so the next tick
+  retries (the reminder *is* the feature, unlike the cosmetic kickoff/goal messages). If the channel
+  resolves but `channel.send()` later raises, the dedup flag is already committed — the same accepted
+  commit-then-send tradeoff the other cogs carry.
+- **Reschedule:** `apply_plan` clears `reminder_sent_at` so a moved game is reminded again — subject
+  to the once-daily sync detection lag (a *sooner* reschedule landing inside the lead window before
+  the next sync won't be re-reminded; same lag as the §9.1 re-announcement).
+
+Restart-safe and idempotent (dedup state persists on the game row).
+
 ---
 
 ## 10. Feature 3 — Scoreboard
