@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, assert_never
 
@@ -74,6 +75,11 @@ BetPayload = ExactScorePayload | FirstScorerPayload | BttsPayload | WinnerPayloa
 
 class InvalidBetPayload(ValueError):
     """Raised when a bet payload is missing fields or has invalid values."""
+
+
+def is_bet_open(kickoff_utc: datetime, now: datetime) -> bool:
+    """A bet is open only strictly before kickoff; it closes at the apito inicial (§8.2)."""
+    return now < kickoff_utc
 
 
 def _require_int(data: Mapping[str, Any], key: str, *, minimum: int) -> int:

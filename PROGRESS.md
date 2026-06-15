@@ -63,6 +63,15 @@ operating rules are in `RALPH.md`.
   - Note: SyncCog (+ session_factory/provider_factory) is wired into the bot's composition root at M10
     (shared engine/provider construction with the CLI); the orchestration + send are tested now.
 - [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
+  - [x] `domain/bets.py::is_bet_open` + `bot/bets_logic.py` — `place_bet`/`delete_bet` (pure DB CRUD:
+    check game open via `is_bet_open`, auto-create player, upsert/delete; `GameNotFoundError`/
+    `GameNotOpenError` pt-BR); 8 tests.
+  - [ ] `domain/text_pt.py` rendering — `render_payload`/selection labels (pt-BR) for /minhas_apostas, /jogos.
+  - [ ] `bot/bets_cog.py` — `/apostar` (game select → category select → modal/select → confirm/upsert),
+    `/minhas_apostas` (list open/settled + delete control), `/jogos` (open games + what's left).
+    **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`, followup).**
+  - [ ] `bot/subscribe_cog.py` — `/inscrever` & `/sair` (add/remove Tigrinhos role; ephemeral; handle
+    missing-perm/hierarchy → pt-BR + admin alert). **Ground `member.add_roles`/`remove_roles`.**
 - [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
 - [ ] **M8 — Board cog:** `/placar geral|semana` with tie-breaks.
 - [ ] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
@@ -185,9 +194,9 @@ operating rules are in `RALPH.md`.
   `run_sync` session+commit, `_send` with `AllowedMentions(roles=True)`, BudgetExceeded→skip).
   Grounded discord.py `ext.tasks`. 5 tests (announce/reschedule/void/no-change + cog construct/send-noop).
   **M5 complete.** SyncCog wiring into setup_hook deferred to M10 composition root.
-- **Next:** M6 — Commands cog(s): `/apostar` (component flow: open-games select → category select →
-  modal/select → confirm/upsert), `/minhas_apostas` (list + delete open), `/jogos`, time-based closing
-  (now < kickoff_utc, no API call); `/inscrever` & `/sair` (Tigrinhos role add/remove, ephemeral).
-  **Ground discord.py UI: `discord.ui.View`/`Select`/`Button`/`Modal`, `app_commands` in a Cog,
-  `Interaction.response`/`followup`, `member.add_roles`/`remove_roles`.** Keep bet build/validation +
-  closing checks + human-readable rendering PURE/testable (reuse domain.bets + text_pt); thin UI layer.
+- **Iter 21 (M6 bets_logic):** `is_bet_open` (closes AT kickoff: `now < kickoff_utc`) + `place_bet`/
+  `delete_bet` (pure DB CRUD; auto-create player; pt-BR `GameNotFoundError`/`GameNotOpenError`). 8 tests.
+- **Next:** M6 — pt-BR `render_payload` + selection labels in `text_pt.py` (for /minhas_apostas, /jogos),
+  then the bets cog UI (`/apostar` component flow, `/minhas_apostas`, `/jogos`) and subscribe cog
+  (`/inscrever`/`/sair`). **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`) + role add/remove.**
+  Keep rendering pure/testable; thin UI layer over `place_bet`/`delete_bet` + `parse_payload`.
