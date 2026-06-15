@@ -19,7 +19,7 @@ from enum import StrEnum
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -87,9 +87,11 @@ class Settings(BaseSettings):
     wc_season: int = Field(default=2026, ge=2000, le=2100)
     timezone: str = "America/Sao_Paulo"
     sync_time: str = "06:00"
-    poll_interval_minutes: int = Field(default=10, gt=0)
+    poll_interval_minutes: int = Field(default=1, gt=0)
     match_window_hours: int = Field(default=3, gt=0)
-    api_daily_cap: int = Field(default=100, ge=0)
+    settle_grace_hours: int = Field(default=24, gt=0)
+    stuck_recheck_minutes: int = Field(default=15, gt=0)
+    api_daily_cap: int = Field(default=3000, ge=0)
     api_budget_reset_tz: str = "UTC"
     db_path: str = "/data/tigrinho.db"
     log_level: str = "INFO"
@@ -119,6 +121,17 @@ class Settings(BaseSettings):
                 f"invalid log_level {value!r}; expected one of {sorted(_VALID_LOG_LEVELS)}"
             )
         return upper
+
+    @model_validator(mode="after")
+    def _validate_grace_covers_window(self) -> Settings:
+        # A game is "overdue" once it's past match_window_hours but within settle_grace_hours;
+        # if grace < window that band is empty/inverted, so reject it at startup (§9.2).
+        if self.settle_grace_hours < self.match_window_hours:
+            raise ValueError(
+                f"settle_grace_hours ({self.settle_grace_hours}) must be >= "
+                f"match_window_hours ({self.match_window_hours})"
+            )
+        return self
 
     @property
     def tzinfo(self) -> ZoneInfo:

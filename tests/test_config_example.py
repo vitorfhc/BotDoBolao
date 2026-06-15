@@ -22,6 +22,8 @@ _FIELD_ENV_VARS = [
     "SYNC_TIME",
     "POLL_INTERVAL_MINUTES",
     "MATCH_WINDOW_HOURS",
+    "SETTLE_GRACE_HOURS",
+    "STUCK_RECHECK_MINUTES",
     "API_DAILY_CAP",
     "API_BUDGET_RESET_TZ",
     "DB_PATH",
@@ -43,5 +45,5 @@ def test_config_example_loads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert settings.timezone == "America/Sao_Paulo"
     assert settings.db_path == "/data/tigrinho.db"
     assert settings.guild_id > 0
-    assert settings.api_daily_cap == 100
+    assert settings.api_daily_cap == 3000
     assert settings.sync_time == "06:00"

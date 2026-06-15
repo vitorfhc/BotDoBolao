@@ -28,6 +28,8 @@ _FIELD_ENV_VARS = [
     "SYNC_TIME",
     "POLL_INTERVAL_MINUTES",
     "MATCH_WINDOW_HOURS",
+    "SETTLE_GRACE_HOURS",
+    "STUCK_RECHECK_MINUTES",
     "API_DAILY_CAP",
     "API_BUDGET_RESET_TZ",
     "DB_PATH",
@@ -50,6 +52,8 @@ _FULL_YAML = """
     sync_time: "06:30"
     poll_interval_minutes: 5
     match_window_hours: 2
+    settle_grace_hours: 12
+    stuck_recheck_minutes: 5
     api_daily_cap: 50
     api_budget_reset_tz: UTC
     db_path: /data/x.db
@@ -89,6 +93,8 @@ def test_loads_secrets_from_env_and_settings_from_yaml(base_env: Path) -> None:
     assert s.log_format is LogFormat.CONSOLE
     assert s.poll_interval_minutes == 5
     assert s.match_window_hours == 2
+    assert s.settle_grace_hours == 12
+    assert s.stuck_recheck_minutes == 5
 
 
 def test_optional_settings_use_defaults(base_env: Path) -> None:
@@ -100,9 +106,11 @@ def test_optional_settings_use_defaults(base_env: Path) -> None:
     assert s.wc_season == 2026
     assert s.timezone == "America/Sao_Paulo"
     assert s.sync_time == "06:00"
-    assert s.poll_interval_minutes == 10
+    assert s.poll_interval_minutes == 1
     assert s.match_window_hours == 3
-    assert s.api_daily_cap == 100
+    assert s.settle_grace_hours == 24
+    assert s.stuck_recheck_minutes == 15
+    assert s.api_daily_cap == 3000
     assert s.api_budget_reset_tz == "UTC"
     assert s.db_path == "/data/tigrinho.db"
     assert s.log_level == "INFO"
@@ -194,6 +202,17 @@ def test_non_positive_id_fails_fast(base_env: Path) -> None:
         tigrinhos_role_id: 3
         admin_user_id: 4
         """,
+    )
+    with pytest.raises(ConfigError):
+        load_settings()
+
+
+def test_settle_grace_below_match_window_fails_fast(base_env: Path) -> None:
+    # Grace must be >= the fast-poll window; otherwise a game is "overdue" before it stops
+    # being actively polled, which is nonsensical (COMPLETION.md §9.2).
+    _write_yaml(
+        base_env / "config.yaml",
+        _MINIMAL_YAML + "    match_window_hours: 5\n    settle_grace_hours: 3\n",
     )
     with pytest.raises(ConfigError):
         load_settings()
