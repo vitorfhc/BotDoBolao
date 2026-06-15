@@ -5,6 +5,7 @@ description = "Discord bot for friendly (no real money) FIFA World Cup 2026 bets
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.4",
+    "httpx>=0.28.1",
     "pydantic-settings[yaml]>=2.14.1",
     "sqlalchemy>=2.0",
     "structlog>=26.1.0",

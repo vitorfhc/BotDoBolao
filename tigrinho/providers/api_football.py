@@ -15,11 +15,16 @@ Field paths, status codes, and endpoints verified against the live API-Football 
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
+
 from .base import Fixture, GameStatus, GoalEvent, MatchResult, SquadPlayer, Stage
+from .budget import RequestBudget
+
+DEFAULT_BASE_URL = "https://v3.football.api-sports.io"
 
 # API-Football status.short -> normalized GameStatus (COMPLETION.md §7.2, live-verified).
 _STATUS_MAP: dict[str, GameStatus] = {
@@ -172,3 +177,100 @@ def parse_squad_players(response: Sequence[Mapping[str, Any]]) -> list[SquadPlay
                 )
             )
     return players
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+class ApiFootballError(RuntimeError):
+    """Raised when API-Football returns an error payload or a malformed response."""
+
+
+class ApiFootballProvider:
+    """:class:`FootballProvider` backed by API-Football v3 over httpx, gated by RequestBudget.
+
+    Every network call goes through :class:`RequestBudget`, so the daily cap is enforced and a
+    successful request increments the counter. Pass a preconfigured ``client`` (e.g. with a mock
+    transport) for tests; otherwise an :class:`httpx.AsyncClient` is built with the auth header.
+    """
+
+    def __init__(
+        self,
+        *,
+        league_id: int,
+        season: int,
+        budget: RequestBudget,
+        base_url: str = DEFAULT_BASE_URL,
+        api_key: str = "",
+        client: httpx.AsyncClient | None = None,
+        clock: Callable[[], datetime] = _utcnow,
+    ) -> None:
+        self._league_id = league_id
+        self._season = season
+        self._budget = budget
+        self._clock = clock
+        self._client = (
+            client
+            if client is not None
+            else httpx.AsyncClient(
+                base_url=base_url,
+                headers={"x-apisports-key": api_key},
+                timeout=httpx.Timeout(15.0),
+            )
+        )
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client (call on bot shutdown)."""
+        await self._client.aclose()
+
+    async def _get(self, path: str, params: Mapping[str, Any]) -> list[Any]:
+        async def call() -> Any:
+            response = await self._client.get(path, params=dict(params))
+            response.raise_for_status()
+            return response.json()
+
+        data = await self._budget.run(call)
+        errors = data.get("errors")
+        if errors:
+            raise ApiFootballError(f"API-Football returned errors for {path}: {errors}")
+        response_list = data.get("response")
+        if not isinstance(response_list, list):
+            raise ApiFootballError(f"API-Football response missing 'response' list for {path}")
+        return response_list
+
+    async def get_fixtures(self, window_hours: int) -> list[Fixture]:
+        now = self._clock()
+        end = now + timedelta(hours=window_hours)
+        params = {
+            "league": self._league_id,
+            "season": self._season,
+            "from": now.date().isoformat(),
+            "to": end.date().isoformat(),
+            "timezone": "UTC",
+        }
+        items = await self._get("/fixtures", params)
+        fixtures = [parse_fixture(item) for item in items]
+        return [fixture for fixture in fixtures if fixture.kickoff_utc <= end]
+
+    async def get_live_results(self) -> list[MatchResult]:
+        params = {"league": self._league_id, "season": self._season, "live": "all"}
+        items = await self._get("/fixtures", params)
+        # Belt-and-braces: keep only our league even if `live=all` ignores the league filter.
+        return [
+            parse_match_result(item)
+            for item in items
+            if int(item["league"]["id"]) == self._league_id
+        ]
+
+    async def get_match_result(self, fixture_id: int) -> MatchResult:
+        fixtures = await self._get("/fixtures", {"id": fixture_id})
+        if not fixtures:
+            raise LookupError(f"API-Football has no fixture {fixture_id}")
+        events = await self._get("/fixtures/events", {"fixture": fixture_id})
+        goals = parse_goal_events(events)
+        return parse_match_result(fixtures[0], goals=goals)
+
+    async def get_squad(self, team_id: int) -> list[SquadPlayer]:
+        response = await self._get("/players/squads", {"team": team_id})
+        return parse_squad_players(response)
