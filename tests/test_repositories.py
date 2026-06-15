@@ -99,6 +99,19 @@ def test_game_list_active_within_window_and_unsettled(session: Session) -> None:
     assert active_ids == {2}
 
 
+def test_game_list_active_and_stuck_split_at_the_grace(session: Session) -> None:
+    # Self-heal contract: the cog passes the settlement grace as the window, so overdue games
+    # (past the match window) stay pollable until the grace expires; past it they're "stuck"
+    # and the admin is alerted (COMPLETION.md §9.2).
+    repo = GameRepository(session)
+    repo.add(_game(1, NOW - timedelta(hours=5)))  # overdue vs a 3h match window...
+    repo.add(_game(2, NOW - timedelta(hours=30)))  # ...and past a 24h grace
+    pollable = {g.fixture_id for g in repo.list_active(NOW, window_hours=24)}
+    expired = {g.fixture_id for g in repo.list_stuck(NOW, window_hours=24)}
+    assert pollable == {1}  # still within the 24h grace -> keep auto-settling
+    assert expired == {2}  # outlived the grace -> give up + alert
+
+
 # --- BetRepository ------------------------------------------------------------
 
 
