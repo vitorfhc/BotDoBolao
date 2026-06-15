@@ -102,6 +102,7 @@ at startup; the bot MUST refuse to start if any required value is missing or mal
 | `wc_season` | no | `2026` | Season. |
 | `timezone` | no | `America/Sao_Paulo` | Drives sync time, displayed kickoffs, weekly reset. |
 | `sync_time` | no | `06:00` | Daily fixtures sync (local time). |
+| `reminder_lead_minutes` | no | `60` | Minutes before kickoff to ping `@Tigrinhos` with a "place your bets" reminder (§9.4). |
 | `poll_interval_minutes` | no | `1` | Live-poll cadence during match windows (one request per cycle covers all games). |
 | `match_window_hours` | no | `3` | Fast-poll window after kickoff; past it a game is "overdue" (rechecked slowly until the grace). |
 | `settle_grace_hours` | no | `24` | Keep auto-settling a game until this long after kickoff (covers extra time/penalties + API lag); must be ≥ `match_window_hours`. |

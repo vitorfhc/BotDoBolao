@@ -20,6 +20,7 @@ _FIELD_ENV_VARS = [
     "WC_SEASON",
     "TIMEZONE",
     "SYNC_TIME",
+    "REMINDER_LEAD_MINUTES",
     "POLL_INTERVAL_MINUTES",
     "MATCH_WINDOW_HOURS",
     "SETTLE_GRACE_HOURS",
@@ -47,3 +48,4 @@ def test_config_example_loads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert settings.guild_id > 0
     assert settings.api_daily_cap == 3000
     assert settings.sync_time == "06:00"
+    assert settings.reminder_lead_minutes == 60

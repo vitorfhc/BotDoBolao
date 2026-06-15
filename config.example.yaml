@@ -14,6 +14,7 @@ wc_league_id: 1                        # FIFA World Cup league id — VERIFY via
 wc_season: 2026
 timezone: America/Sao_Paulo            # display kickoffs, sync time, weekly reset
 sync_time: "06:00"                     # daily fixtures sync (local time)
+reminder_lead_minutes: 60              # minutes before kickoff to ping @Tigrinhos with a bet reminder
 poll_interval_minutes: 1               # live-poll cadence during match windows (1 req/cycle, covers all games)
 match_window_hours: 3                  # fast-poll window after kickoff
 settle_grace_hours: 24                 # keep auto-settling a game until this long after kickoff (covers ET+pens, API lag)
