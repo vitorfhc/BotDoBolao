@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import discord
 from discord.ext import commands, tasks
@@ -112,29 +112,59 @@ def apply_settlement(session: Session, result: MatchResult, *, now: datetime) ->
     )
 
 
+def should_poll(
+    *,
+    pollable_kickoffs: list[datetime],
+    now: datetime,
+    last_poll: datetime | None,
+    match_window_hours: int,
+    stuck_recheck_minutes: int,
+) -> bool:
+    """Decide whether to hit the provider this cycle (COMPLETION.md §9.2).
+
+    Poll every cycle while any pollable game is within the match window (fast/live cadence). Once
+    only overdue games remain — past the match window but still within ``settle_grace_hours`` —
+    throttle to ``stuck_recheck_minutes`` between provider calls: a stuck game doesn't change
+    minute-to-minute, so frequent rechecks would just waste budget.
+    """
+    if not pollable_kickoffs:
+        return False
+    fast_cutoff = now - timedelta(hours=match_window_hours)
+    if any(kickoff >= fast_cutoff for kickoff in pollable_kickoffs):
+        return True  # a game is inside its live window — poll now
+    if last_poll is None:
+        return True  # overdue games we haven't rechecked yet
+    return now - last_poll >= timedelta(minutes=stuck_recheck_minutes)
+
+
 async def collect_settlements(
     session: Session, provider: FootballProvider, settings: Settings, *, now: datetime
 ) -> list[SettledGame]:
-    """Poll active games and settle any that are now finished (COMPLETION.md §9.2).
+    """Settle every unsettled game (kicked off within ``settle_grace_hours``) that is now finished.
 
-    If there are no active games, returns immediately **without any provider call**. For each
-    finished active game, fetches the full result (goal timeline) and settles it. May raise
-    ``BudgetExceeded`` from the provider (the cog turns it into a skip). No commit — caller commits.
+    Self-healing (COMPLETION.md §9.2): a game keeps being polled until it settles or outlives the
+    grace, so late finishes (extra time, penalties) and API status lag recover with no manual step.
+    Returns immediately with no provider call if nothing is pollable. One date-windowed call fetches
+    current statuses for all games at once; only games reported finished cost an extra per-game
+    request (the goal timeline). May raise ``BudgetExceeded`` (the cog turns it into a skip). No
+    commit — the caller commits.
     """
     games = GameRepository(session)
-    active = games.list_active(now, settings.match_window_hours)
-    if not active:
+    pollable = games.list_active(now, settings.settle_grace_hours)
+    if not pollable:
         return []
-    active_ids = {game.fixture_id for game in active}
+    results = {
+        result.fixture_id: result
+        for result in await provider.get_recent_results(settings.settle_grace_hours)
+    }
     settled: list[SettledGame] = []
-    for result in await provider.get_recent_results(settings.settle_grace_hours):
-        if result.fixture_id not in active_ids:
+    for game in pollable:
+        result = results.get(game.fixture_id)
+        if result is None:
             continue
-        game = games.get(result.fixture_id)
-        if game is not None:
-            game.status = result.status.value
+        game.status = result.status.value
         if result.status is GameStatus.FINISHED:
-            full_result = await provider.get_match_result(result.fixture_id)
+            full_result = await provider.get_match_result(game.fixture_id)
             outcome = apply_settlement(session, full_result, now=now)
             if outcome is not None:
                 settled.append(outcome)
@@ -193,6 +223,7 @@ class PollCog(commands.Cog):
         self.provider_factory = provider_factory
         self._clock = clock
         self._alerted_stuck: set[int] = set()
+        self._last_poll: datetime | None = None
 
     async def cog_load(self) -> None:
         self.poll.change_interval(minutes=self.settings.poll_interval_minutes)
@@ -215,20 +246,30 @@ class PollCog(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def run_poll(self) -> None:
-        """Poll active games, settle finished ones, post results, and alert on stuck games."""
+        """One poll cycle: settle finished games (throttling rechecks of overdue ones), post
+        results, and alert the admin about games that outlived the settlement grace (§9.2)."""
         now = self._clock()
         with self.session_factory() as session:
-            provider = self.provider_factory(session)
-            settled = await collect_settlements(session, provider, self.settings, now=now)
-            results = [
-                (game, resolve_scorer_name(session, game.first_scorer_player_id))
-                for game in settled
-            ]
+            games = GameRepository(session)
+            pollable = games.list_active(now, self.settings.settle_grace_hours)
+            results: list[tuple[SettledGame, str | None]] = []
+            if should_poll(
+                pollable_kickoffs=[game.kickoff_utc for game in pollable],
+                now=now,
+                last_poll=self._last_poll,
+                match_window_hours=self.settings.match_window_hours,
+                stuck_recheck_minutes=self.settings.stuck_recheck_minutes,
+            ):
+                self._last_poll = now
+                provider = self.provider_factory(session)
+                settled = await collect_settlements(session, provider, self.settings, now=now)
+                results = [
+                    (game, resolve_scorer_name(session, game.first_scorer_player_id))
+                    for game in settled
+                ]
             stuck = [
                 (game.fixture_id, f"{game.home_team_name} x {game.away_team_name}")
-                for game in GameRepository(session).list_stuck(
-                    now, self.settings.match_window_hours
-                )
+                for game in games.list_stuck(now, self.settings.settle_grace_hours)
             ]
             session.commit()
         await self._post_results(results)
@@ -257,6 +298,6 @@ class PollCog(commands.Cog):
             await dm_admin(
                 self.bot,
                 self.settings.admin_user_id,
-                f"⚠️ Jogo {matchup} (#{fixture_id}) passou da janela sem apuração. "
-                f"Resolva manualmente pela CLI.",
+                f"⚠️ Jogo {matchup} (#{fixture_id}) segue sem apuração "
+                f"{self.settings.settle_grace_hours}h após o início. Resolva manualmente pela CLI.",
             )

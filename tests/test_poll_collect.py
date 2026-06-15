@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
-from tigrinho.bot.poll_cog import collect_settlements
+from tigrinho.bot.poll_cog import collect_settlements, should_poll
 from tigrinho.config import Settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
 from tigrinho.db.models import Base, Game
@@ -105,11 +105,35 @@ def test_list_stuck_returns_unsettled_past_window(session: Session) -> None:
     assert [g.fixture_id for g in stuck] == [1]
 
 
-async def test_collect_no_active_games_makes_no_api_call(session: Session) -> None:
-    # only a long-past unsettled game (outside the window) -> not active
-    _add_game(session, 1, kickoff=NOW - timedelta(hours=10), settled=None)
+async def test_collect_no_pollable_games_makes_no_api_call(session: Session) -> None:
+    # An unsettled game past the settlement grace (>24h) is no longer pollable -> no provider call.
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=30), settled=None)
     result = await collect_settlements(session, _ExplodingProvider(), _settings(), now=NOW)
     assert result == []
+
+
+async def test_collect_self_heals_overdue_game_within_grace(session: Session) -> None:
+    # A game past the 3h match window but within the 24h grace (e.g. a knockout that ran to
+    # penalties, or API status lag) still auto-settles once it's reported finished (§9.2).
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=5), settled=None)
+    PlayerRepository(session).get_or_create(100, "Vitor", now=NOW)
+    BetRepository(session).upsert(
+        fixture_id=1,
+        player_discord_id=100,
+        category="WINNER",
+        payload_json=dump_payload(WinnerPayload(WinnerSelection.HOME)),
+        now=NOW,
+    )
+    provider = FakeProvider(
+        recent_results=[_result(GameStatus.FINISHED)],
+        match_results=[
+            _result(GameStatus.FINISHED, goals=(GoalEvent(10, 10, 7, "N", False, False),))
+        ],
+    )
+    settled = await collect_settlements(session, provider, _settings(), now=NOW)
+    assert len(settled) == 1  # self-healed despite being past the match window
+    game = GameRepository(session).get(1)
+    assert game is not None and game.status == "FINISHED"
 
 
 async def test_collect_settles_finished_active_game(session: Session) -> None:
@@ -142,3 +166,47 @@ async def test_collect_live_game_updates_status_without_settling(session: Sessio
     assert settled == []
     game = GameRepository(session).get(1)
     assert game is not None and game.status == "LIVE" and game.settled_at is None
+
+
+def test_should_poll_true_when_a_game_is_in_the_match_window() -> None:
+    # A live-window game is polled every cycle, even if we just polled a moment ago.
+    assert (
+        should_poll(
+            pollable_kickoffs=[NOW - timedelta(hours=1)],
+            now=NOW,
+            last_poll=NOW - timedelta(seconds=30),
+            match_window_hours=3,
+            stuck_recheck_minutes=15,
+        )
+        is True
+    )
+
+
+def test_should_poll_false_when_nothing_pollable() -> None:
+    assert (
+        should_poll(
+            pollable_kickoffs=[],
+            now=NOW,
+            last_poll=None,
+            match_window_hours=3,
+            stuck_recheck_minutes=15,
+        )
+        is False
+    )
+
+
+def test_should_poll_throttles_overdue_games_between_rechecks() -> None:
+    overdue = [NOW - timedelta(hours=5)]  # past the 3h window but within grace
+
+    def poll(last_poll: datetime | None) -> bool:
+        return should_poll(
+            pollable_kickoffs=overdue,
+            now=NOW,
+            last_poll=last_poll,
+            match_window_hours=3,
+            stuck_recheck_minutes=15,
+        )
+
+    assert poll(NOW - timedelta(minutes=5)) is False  # recently polled -> wait
+    assert poll(NOW - timedelta(minutes=20)) is True  # recheck interval elapsed -> poll
+    assert poll(None) is True  # never polled these overdue games -> poll
