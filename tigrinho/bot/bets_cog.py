@@ -26,7 +26,13 @@ from tigrinho.domain.bets import (
 from tigrinho.domain.text_pt import render_payload
 from tigrinho.providers.base import Stage
 
-from .apostar_view import FlowContext, build_apostar_view, games_to_choices
+from .apostar_view import (
+    FlowContext,
+    build_apostar_view,
+    build_delete_view,
+    build_open_bet_choices,
+    games_to_choices,
+)
 from .bets_view import MyBetLine, OpenGameLine, render_my_bets, render_open_games
 
 
@@ -108,6 +114,7 @@ class BetsCog(commands.Cog):
         name="minhas_apostas", description="Ver seus palpites (abertos e apurados)"
     )
     async def minhas_apostas(self, interaction: discord.Interaction) -> None:
+        now = self._clock()
         with self.session_factory() as session:
 
             def resolver(player_id: int) -> str | None:
@@ -115,7 +122,21 @@ class BetsCog(commands.Cog):
                 return squad_player.name if squad_player is not None else None
 
             lines = build_my_bet_lines(session, interaction.user.id, resolver)
-        await interaction.response.send_message(render_my_bets(lines), ephemeral=True)
+            open_choices = build_open_bet_choices(session, interaction.user.id, now=now)
+        text = render_my_bets(lines)
+        if not open_choices:
+            await interaction.response.send_message(text, ephemeral=True)
+            return
+        ctx = FlowContext(
+            settings=self.settings,
+            session_factory=self.session_factory,
+            clock=self._clock,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
+        )
+        await interaction.response.send_message(
+            text, view=build_delete_view(ctx, open_choices), ephemeral=True
+        )
 
     @app_commands.command(name="apostar", description="Fazer ou editar um palpite")
     async def apostar(self, interaction: discord.Interaction) -> None:

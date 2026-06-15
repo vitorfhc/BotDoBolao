@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from tigrinho.config import Settings
 from tigrinho.db.models import Game
-from tigrinho.db.repositories import GameRepository, SquadRepository
+from tigrinho.db.repositories import BetRepository, GameRepository, SquadRepository
 from tigrinho.domain.bets import (
     BetCategory,
     BetPayload,
@@ -25,6 +25,7 @@ from tigrinho.domain.bets import (
     InvalidBetPayload,
     OverUnderSelection,
     WinnerSelection,
+    is_bet_open,
     parse_payload,
 )
 from tigrinho.domain.text_pt import (
@@ -36,7 +37,7 @@ from tigrinho.domain.text_pt import (
 )
 from tigrinho.providers.base import Stage
 
-from .bets_logic import BetError, place_bet
+from .bets_logic import BetError, delete_bet, place_bet
 from .sync_planning import format_kickoff_pt
 
 # A Discord Select may show at most 25 options (so long squads must be paginated).
@@ -439,4 +440,72 @@ def build_squad_view(
                 disabled=page >= len(pages) - 1,
             )
         )
+    return view
+
+
+@dataclass(frozen=True, slots=True)
+class OpenBetChoice:
+    """A caller's still-open (deletable) bet, offered in the delete Select."""
+
+    fixture_id: int
+    category: BetCategory
+    matchup: str
+
+
+def build_open_bet_choices(
+    session: Session, player_discord_id: int, *, now: datetime
+) -> list[OpenBetChoice]:
+    """The caller's bets on still-open games (only these can be deleted — §8.2)."""
+    games = GameRepository(session)
+    choices: list[OpenBetChoice] = []
+    for bet in BetRepository(session).list_for_player(player_discord_id):
+        game = games.get(bet.fixture_id)
+        if game is not None and is_bet_open(game.kickoff_utc, now):
+            choices.append(
+                OpenBetChoice(
+                    fixture_id=bet.fixture_id,
+                    category=BetCategory(bet.category),
+                    matchup=f"{game.home_team_name} x {game.away_team_name}",
+                )
+            )
+    return choices
+
+
+class DeleteSelect(ui.Select[ui.View]):
+    def __init__(self, ctx: FlowContext, choices: Sequence[OpenBetChoice]) -> None:
+        super().__init__(
+            placeholder="Apagar um palpite (opcional)",
+            options=[
+                discord.SelectOption(
+                    label=f"{c.matchup} — {CATEGORY_LABELS_PT[c.category]}"[:100],
+                    value=f"{c.fixture_id}:{c.category.value}",
+                )
+                for c in choices
+            ],
+        )
+        self._ctx = ctx
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        fixture_str, category_str = self.values[0].split(":", 1)
+        category = BetCategory(category_str)
+        try:
+            with self._ctx.session_factory() as session:
+                deleted = delete_bet(
+                    session,
+                    fixture_id=int(fixture_str),
+                    player_discord_id=self._ctx.user_id,
+                    category=category,
+                    now=self._ctx.clock(),
+                )
+                session.commit()
+            message = "✅ Palpite apagado." if deleted else "Esse palpite não existe mais."
+        except BetError as exc:
+            message = f"❌ {exc}"
+        await interaction.response.edit_message(content=message, view=None)
+
+
+def build_delete_view(ctx: FlowContext, choices: Sequence[OpenBetChoice]) -> ui.View:
+    """A Select to delete one of the caller's open bets."""
+    view = ui.View(timeout=VIEW_TIMEOUT)
+    view.add_item(DeleteSelect(ctx, choices[:DISCORD_SELECT_LIMIT]))
     return view

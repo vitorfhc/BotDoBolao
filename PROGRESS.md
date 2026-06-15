@@ -62,7 +62,7 @@ operating rules are in `RALPH.md`.
     `AllowedMentions(roles=True)`, BudgetExceeded→skip); grounded vs discord.py `ext.tasks`; 5 tests.
   - Note: SyncCog (+ session_factory/provider_factory) is wired into the bot's composition root at M10
     (shared engine/provider construction with the CLI); the orchestration + send are tested now.
-- [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
+- [x] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
   - [x] `domain/bets.py::is_bet_open` + `bot/bets_logic.py` — `place_bet`/`delete_bet` (pure DB CRUD:
     check game open via `is_bet_open`, auto-create player, upsert/delete; `GameNotFoundError`/
     `GameNotOpenError` pt-BR); 8 tests.
@@ -78,7 +78,9 @@ operating rules are in `RALPH.md`.
   - [x] `/apostar` component flow — all 5 categories: game Select → category Select → EXACT_SCORE Modal /
     WINNER+BTTS+OVER_UNDER value Select / FIRST_SCORER paginated squad Select (load_scorer_choices +
     build_squad_view with ◀/▶) → `parse_payload`+`place_bet`; wired into `BetsCog`; 11 tests.
-  - [ ] `/minhas_apostas` delete control — a Select of the caller's open bets → `delete_bet`.
+  - [x] `/minhas_apostas` delete control — `build_open_bet_choices` (only open bets) + `build_delete_view`
+    (DeleteSelect → `delete_bet`); wired into `/minhas_apostas`; 2 tests.
+  - Note: `BetsCog`/`SubscribeCog` wire into the bot composition root at M10 (with `SyncCog`).
   - [x] `bot/subscribe_cog.py` — pure `decide_subscribe` (already/not subscribed → reply + perform?) +
     `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
     grounded vs discord.py role ops; 5 tests.
@@ -224,10 +226,15 @@ operating rules are in `RALPH.md`.
 - **Iter 28 (M6 FIRST_SCORER):** `load_scorer_choices` (both teams' squads) + `build_squad_view`
   (paginated ScorerSelect + ◀/▶ PageButtons) + FIRST_SCORER branch in CategorySelect; added FIRST_SCORER
   to APOSTAR_CATEGORIES. /apostar now covers all 5 categories. 4 tests.
-- **Next:** M6 — `/minhas_apostas` **delete control**: build a Select of the caller's still-open bets
-  (matchup+category) → on select call `delete_bet`. Testable: a `build_open_bet_choices(session,
-  player_id, now)` (DB → list of deletable bets) + a `build_delete_view` (option count). Add a button on
-  /minhas_apostas to open it, or a separate `/minhas_apostas` always shows it when open bets exist.
-  Then **M6 DONE → M7 poll cog** (active-window polling → settle finished games via `settle_game` +
-  `match_facts_from_result` + store `first_scorer_player_id`; one results message per game; stuck-game
-  alert). Keep settlement-apply + results-message rendering PURE/testable; ground `tasks.loop(seconds=)`.
+- **Iter 29 (M6 delete control, M6 DONE):** `build_open_bet_choices` + `build_delete_view`/`DeleteSelect`
+  → `delete_bet`; wired into `/minhas_apostas` (shows a delete Select when there are open bets). 2 tests.
+  **M6 complete** (all commands implemented; cogs wired into the composition root at M10).
+- **Next:** M7 — Poll cog (`bot/poll_cog.py`). Reuse domain.settlement. Plan:
+  (a) a pure `settle_finished_games(session, results, *, now) -> list[SettledGameResult]` that, for each
+  FINISHED `MatchResult` of an unsettled active game, builds `MatchFacts`, runs `settle_game` over its
+  bets, writes is_correct/points/settled_at on bets + sets game `settled_at`/scores/first_scorer_player_id,
+  and returns per-game data for the results message; (b) pure `render_results_message` (final 90' score,
+  first scorer, each participant mentioned with their game points + breakdown — §8.3); (c) `PollCog`
+  (`tasks.loop(minutes=poll_interval)`: if no active games → no API call; else get_live_results via
+  provider → settle finished → post results; stuck-game alert past match_window). **Ground discord.py
+  `tasks.loop(minutes=)`** (already know it). Start with (a)+(b) pure/tested, then the cog.
