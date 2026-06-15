@@ -93,6 +93,7 @@ def apply_plan(session: Session, plan: SyncPlan, *, now: datetime, tz: tzinfo) -
                 fixture.kickoff_utc, fixture.home_team_id, fixture.away_team_id
             )
             game.status = GameStatus.SCHEDULED.value
+            game.reminder_sent_at = None
 
     for fixture in plan.voided:
         game = games.get(fixture.fixture_id)
