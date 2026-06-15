@@ -1,6 +1,6 @@
 """Pure pt-BR rendering for /minhas_apostas and /jogos (COMPLETION.md §8.2).
 
-These take already-resolved view lines (the cog does the DB work + payload/scorer rendering) and
+These take already-resolved view lines (the cog does the DB work + payload rendering) and
 produce the message text, so they are testable without a gateway or DB.
 """
 
