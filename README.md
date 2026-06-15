@@ -14,7 +14,7 @@ via slash commands, automatically grades them when each game ends, awards points
 all-time and a weekly scoreboard.
 
 Feature highlights:
-- **5 bet categories** (exact score, first scorer, both-teams-to-score, winner, over/under 2.5),
+- **4 bet categories** (exact score, both-teams-to-score, winner, over/under 2.5),
   graded on the **90-minute** result.
 - **Component-driven `/apostar`** flow (selects + modal), editable until kickoff.
 - **Automatic settlement** (self-healing — late finishers like extra time/penalties settle without
@@ -83,10 +83,6 @@ are synced to your guild on startup (instant — no global propagation wait).
 
 ## 8. First-run setup
 
-- **Seed squads** (required for `/apostar` first-scorer bets), once per team:
-  ```sh
-  docker compose exec bot python -m tigrinho.cli squads seed <team_id>
-  ```
 - **Force a sync** now (optional — otherwise it runs daily at `sync_time`):
   ```sh
   docker compose exec bot python -m tigrinho.cli sync run
@@ -108,13 +104,13 @@ Run any command inside the container: `docker compose exec bot python -m tigrinh
 
 - **CRUD**: `games list`, `games show <fixture_id>`, `players list`, `bets list [--game N|--player N]`,
   `bets delete <id> --confirm`.
-- **Manual result & re-settle** (idempotent): `result set <fixture_id> <home> <away> [--scorer <player_id>] [--advancing <team_id>]`.
-- **Force sync & cache**: `sync run`, `squads seed <team_id>`, `budget show` (API usage today + remaining).
+- **Manual result & re-settle** (idempotent): `result set <fixture_id> <home> <away> [--advancing <team_id>]`.
+- **Force sync**: `sync run`, `budget show` (API usage today + remaining).
 - **Recalc & dump**: `board recalc [--periodo geral|semana]`, `db dump` (row counts per table).
 
 Example:
 ```sh
-docker compose exec bot python -m tigrinho.cli result set 215662 2 1 --scorer 6126
+docker compose exec bot python -m tigrinho.cli result set 215662 2 1
 ```
 
 ## 11. Operations

@@ -338,3 +338,21 @@ operating rules are in `RALPH.md`.
     `stuck_recheck_minutes` (with a fail-fast `grace ≥ window` check). COMPLETION.md §4/§7/§9.2 +
     README updated.
   - Gates green: ruff + format + mypy --strict clean, **pytest 312 passed**.
+
+- **2026-06-15 — Cut FIRST_SCORER bet + squad infrastructure (`cut-first-scorer`):** removed the
+  first-scorer category entirely and everything that existed only for it. Spec:
+  `docs/superpowers/specs/2026-06-15-cut-first-scorer-design.md`; plan:
+  `docs/superpowers/plans/2026-06-15-cut-first-scorer.md`. Now a **4-category** bot (exact score,
+  BTTS, winner, over/under).
+  - **Domain:** dropped `FIRST_SCORER`/`FirstScorerPayload`, the `POINTS` entry + grading arm, the
+    pt-BR label/example/rules, and `render_payload`'s `scorer_name`.
+  - **Goal timeline (full cut):** removed `GoalEvent`, `MatchResult.goals`, `MatchFacts.goals`,
+    `first_genuine_scorer`, and `parse_goal_events`. `get_match_result` is now a single `/fixtures`
+    call (no `/fixtures/events`) — **one fewer API request per finished game**.
+  - **Squad infra:** removed the provider `SquadPlayer` VO + `get_squad`, the `SquadPlayer` ORM +
+    `SquadRepository`, `games.first_scorer_player_id`, the `/apostar` scorer Select/pagination, and
+    the CLI `squads seed` group + `result --scorer` option. No `/players/squads` calls remain.
+  - **Migration `b600b5ed56cc`:** purges existing `FIRST_SCORER` bets, drops
+    `first_scorer_player_id` (SQLite batch mode), drops `squad_players`. Leaderboard rebuilds from
+    settled bets, so no scoreboard fixup. COMPLETION.md §6/§7/§8/§16, README, CLAUDE module map.
+  - Gates green: ruff + format + mypy --strict clean, **pytest 296 passed**.
