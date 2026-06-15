@@ -84,7 +84,7 @@ operating rules are in `RALPH.md`.
   - [x] `bot/subscribe_cog.py` — pure `decide_subscribe` (already/not subscribed → reply + perform?) +
     `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
     grounded vs discord.py role ops; 5 tests.
-- [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
+- [x] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
   - [x] `bot/poll_cog.py` core (discord-free): `apply_settlement` (grade finished game's bets via
     `settle_game`/`match_facts_from_result`, set is_correct/points/settled_at + game status/scores/
     advancing/first_scorer_player_id/settled_at; idempotent; returns `SettledGame`) + `render_results_message`
@@ -92,8 +92,10 @@ operating rules are in `RALPH.md`.
   - [x] `collect_settlements` (testable) — active games (none → NO provider call, §9.2) →
     `get_live_results` → update status → for FINISHED active games fetch `get_match_result` (goals) →
     `apply_settlement`; + `GameRepository.list_stuck` (unsettled past window); 4 tests.
-  - [ ] `PollCog` — `tasks.loop(minutes=poll_interval)` over `collect_settlements`: post results to the
-    announce channel (resolve scorer name), BudgetExceeded→skip, stuck-game admin DM (needs `alerts`).
+  - [x] `bot/alerts.py` (`dm_admin`) + `PollCog` (`tasks.loop(minutes=poll_interval)` over
+    `collect_settlements`: post results w/ `AllowedMentions(users=True)`, resolve scorer name,
+    BudgetExceeded→skip, stuck-game admin DM deduped in-memory); `resolve_scorer_name`; 2 tests.
+    Wired into the bot composition root at M10 (with Sync/Bets/Subscribe cogs).
 - [ ] **M8 — Board cog:** `/placar geral|semana` with tie-breaks.
 - [ ] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
@@ -243,10 +245,13 @@ operating rules are in `RALPH.md`.
 - **Iter 31 (M7 collect_settlements + list_stuck):** testable poll core — `collect_settlements`
   (no-active→no-API-call; settle finished active games via get_match_result+apply_settlement) +
   `GameRepository.list_stuck`. 4 tests.
-- **Next:** M7 — `bot/alerts.py` (tiny `async dm_admin(bot, admin_user_id, message)` — fetch_user+send,
-  catch/log) **then** `PollCog`: `tasks.loop(minutes=poll_interval_minutes)`, `before_loop`
-  wait_until_ready, `run_poll` (session → `collect_settlements` → commit → post each
-  `render_results_message` to announce channel resolving scorer name via SquadRepository →
-  `dm_admin` for each `list_stuck` game), BudgetExceeded→log skip. Thin cog (collect_settlements already
-  tested) + construction smoke test. Then **M7 done → M8 board cog** (`/placar geral|semana`, tie-breaks,
-  rebuildable from settled bets — keep the standings computation PURE/testable).
+- **Iter 32 (M7 PollCog + alerts, M7 DONE):** `alerts.dm_admin` (fetch_user+send, swallow+log) +
+  `PollCog` (tasks.loop, run_poll → collect_settlements → post results → stuck DM, in-memory dedup) +
+  `resolve_scorer_name`. 2 tests. **M7 complete.**
+- **Next:** M8 — Board cog (`/placar geral|semana`). Keep the standings computation PURE/testable:
+  `compute_standings(rows) -> list[StandingRow]` from settled-bet rows (player_discord_id, points,
+  is_correct, category, created_at, game kickoff) with tie-breaks (1) total points desc, (2) exact-score
+  hits desc, (3) total correct bets desc, (4) earliest players.created_at; weekly = games whose kickoff
+  is in the current Mon→Sun week in `timezone`. Then `render_placar` (top ~15 + medals + caller's own
+  line if outside top 15) and `BoardCog` `/placar [periodo]`. Build `compute_standings` + `render_placar`
+  pure first (rebuildable from settled bets, §10), then the thin cog. No new external lib.
