@@ -81,16 +81,11 @@ async def test_post_plain_sends_without_pings(tmp_path: Path) -> None:
 
         async def send(  # type: ignore[override]
             self,
-            content: str = "",
+            content: str,
             *,
-            allowed_mentions: discord.AllowedMentions | None = None,
-            **_kwargs: object,
-        ) -> discord.Message:
-            am = (
-                allowed_mentions if allowed_mentions is not None else discord.AllowedMentions.none()
-            )
-            sent.append((content, am))
-            return None  # type: ignore[return-value]
+            allowed_mentions: discord.AllowedMentions,
+        ) -> None:
+            sent.append((content, allowed_mentions))
 
     engine = create_db_engine(str(tmp_path / "t.db"))
     Base.metadata.create_all(engine)
