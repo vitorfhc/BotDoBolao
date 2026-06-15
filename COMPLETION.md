@@ -422,9 +422,9 @@ ping**):
    (bets are now closed) exactly once (deduped via `games.kickoff_announced_at`).
 2. **Goals** — the date-windowed `/fixtures` call also returns the **live score** (top-level
    `goals.{home,away}`), so a goal is detected for **free** by comparing it to the last-announced
-   score (`games.last_announced_home_goals`/`away`). Only when the score changes does the bot fetch
-   `get_match_result()` once to name the scorer. Own goals are credited to the opponent; penalties
-   and own goals are annotated. A disallowed goal (VAR, score drops) resyncs silently. If the events
+   score (`games.last_announced_home_goals`/`last_announced_away_goals`). Only when the score changes
+   does the bot fetch `get_match_result()` once to name the scorer. Own goals increment the
+   opponent's goal count (for display); penalties and own goals are annotated. A disallowed goal (VAR, score drops) resyncs silently. If the events
    feed lags, the goal is posted as "artilheiro a confirmar". Penalty-shootout kicks are **not**
    goals (the live `goals` field is match goals only).
 
