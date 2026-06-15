@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from tigrinho.config import Settings
 from tigrinho.db.models import Game
+from tigrinho.db.repositories import GameRepository, SquadRepository
 from tigrinho.domain.bets import (
     BetCategory,
     BetPayload,
@@ -42,11 +43,12 @@ from .sync_planning import format_kickoff_pt
 DISCORD_SELECT_LIMIT = 25
 VIEW_TIMEOUT = 300
 
-# Categories offered by /apostar (FIRST_SCORER is added with its paginated squad select).
+# Categories offered by /apostar, in §8.1 points order.
 APOSTAR_CATEGORIES: tuple[BetCategory, ...] = (
     BetCategory.EXACT_SCORE,
-    BetCategory.WINNER,
+    BetCategory.FIRST_SCORER,
     BetCategory.BTTS,
+    BetCategory.WINNER,
     BetCategory.OVER_UNDER,
 )
 
@@ -88,6 +90,23 @@ class GameChoice:
     label: str
     stage: Stage
     matchup: str
+
+
+@dataclass(frozen=True, slots=True)
+class ScorerChoice:
+    """A squad player offered in the FIRST_SCORER Select."""
+
+    player_id: int
+    name: str
+
+
+def load_scorer_choices(
+    session: Session, home_team_id: int, away_team_id: int
+) -> list[ScorerChoice]:
+    """Both teams' cached squads as scorer choices (empty if squads aren't seeded yet)."""
+    repo = SquadRepository(session)
+    players = [*repo.list_for_team(home_team_id), *repo.list_for_team(away_team_id)]
+    return [ScorerChoice(player_id=p.player_id, name=p.name) for p in players]
 
 
 def games_to_choices(games: Sequence[Game], tz: tzinfo) -> list[GameChoice]:
@@ -181,6 +200,27 @@ class CategorySelect(ui.Select[ui.View]):
         if category is BetCategory.EXACT_SCORE:
             await interaction.response.send_modal(
                 ScoreModal(self._ctx, fixture_id=self._fixture_id, matchup=self._matchup)
+            )
+            return
+        if category is BetCategory.FIRST_SCORER:
+            with self._ctx.session_factory() as session:
+                game = GameRepository(session).get(self._fixture_id)
+                scorers = (
+                    load_scorer_choices(session, game.home_team_id, game.away_team_id)
+                    if game is not None
+                    else []
+                )
+            if not scorers:
+                await interaction.response.edit_message(
+                    content="O elenco ainda não foi cadastrado — peça ao admin para seedar.",
+                    view=None,
+                )
+                return
+            await interaction.response.edit_message(
+                content=f"**{self._matchup}** — quem marca primeiro?",
+                view=build_squad_view(
+                    self._ctx, fixture_id=self._fixture_id, matchup=self._matchup, scorers=scorers
+                ),
             )
             return
         view = build_value_view(
@@ -299,4 +339,104 @@ def build_value_view(
     view.add_item(
         ValueSelect(ctx, fixture_id=fixture_id, matchup=matchup, category=category, options=options)
     )
+    return view
+
+
+class ScorerSelect(ui.Select[ui.View]):
+    def __init__(
+        self, ctx: FlowContext, *, fixture_id: int, matchup: str, scorers: Sequence[ScorerChoice]
+    ) -> None:
+        super().__init__(
+            placeholder="Escolha o jogador",
+            options=[
+                discord.SelectOption(label=s.name[:100], value=str(s.player_id)) for s in scorers
+            ],
+        )
+        self._ctx = ctx
+        self._fixture_id = fixture_id
+        self._matchup = matchup
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        try:
+            payload = parse_payload(BetCategory.FIRST_SCORER, {"player_id": int(self.values[0])})
+        except (ValueError, InvalidBetPayload):
+            await interaction.response.edit_message(content="❌ Jogador inválido.", view=None)
+            return
+        await _finalize_bet(
+            self._ctx,
+            interaction,
+            fixture_id=self._fixture_id,
+            matchup=self._matchup,
+            category=BetCategory.FIRST_SCORER,
+            payload=payload,
+            edit=True,
+        )
+
+
+class PageButton(ui.Button[ui.View]):
+    def __init__(
+        self,
+        ctx: FlowContext,
+        *,
+        fixture_id: int,
+        matchup: str,
+        scorers: Sequence[ScorerChoice],
+        target_page: int,
+        label: str,
+        disabled: bool,
+    ) -> None:
+        super().__init__(label=label, disabled=disabled, style=discord.ButtonStyle.secondary)
+        self._ctx = ctx
+        self._fixture_id = fixture_id
+        self._matchup = matchup
+        self._scorers = scorers
+        self._target_page = target_page
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = build_squad_view(
+            self._ctx,
+            fixture_id=self._fixture_id,
+            matchup=self._matchup,
+            scorers=self._scorers,
+            page=self._target_page,
+        )
+        await interaction.response.edit_message(view=view)
+
+
+def build_squad_view(
+    ctx: FlowContext,
+    *,
+    fixture_id: int,
+    matchup: str,
+    scorers: Sequence[ScorerChoice],
+    page: int = 0,
+) -> ui.View:
+    """FIRST_SCORER step: a (paginated) Select of both teams' players, with ◀/▶ buttons."""
+    pages = paginate(scorers)
+    page = max(0, min(page, len(pages) - 1))
+    view = ui.View(timeout=VIEW_TIMEOUT)
+    view.add_item(ScorerSelect(ctx, fixture_id=fixture_id, matchup=matchup, scorers=pages[page]))
+    if len(pages) > 1:
+        view.add_item(
+            PageButton(
+                ctx,
+                fixture_id=fixture_id,
+                matchup=matchup,
+                scorers=scorers,
+                target_page=page - 1,
+                label="◀",
+                disabled=page == 0,
+            )
+        )
+        view.add_item(
+            PageButton(
+                ctx,
+                fixture_id=fixture_id,
+                matchup=matchup,
+                scorers=scorers,
+                target_page=page + 1,
+                label="▶",
+                disabled=page >= len(pages) - 1,
+            )
+        )
     return view

@@ -75,10 +75,10 @@ operating rules are in `RALPH.md`.
     `/jogos` (thin); 4 tests.
   - [x] `bot/apostar_view.py` (pure) — `winner_selection_options` (knockout hides DRAW, §8.1),
     `paginate` (25-option Select limit for squads), `game_choice_label`; 6 tests.
-  - [~] `/apostar` component flow — game Select → category Select → EXACT_SCORE Modal /
-    WINNER+BTTS+OVER_UNDER value Select → `parse_payload`+`place_bet`; wired into `BetsCog`; grounded
-    discord.py UI (`ui.Select[ui.View]`, `ui.Modal`+`ui.TextInput[Modal]`); 7 tests (builders + cmd).
-    Remaining: FIRST_SCORER (paginated squad Select) + `/minhas_apostas` delete control.
+  - [x] `/apostar` component flow — all 5 categories: game Select → category Select → EXACT_SCORE Modal /
+    WINNER+BTTS+OVER_UNDER value Select / FIRST_SCORER paginated squad Select (load_scorer_choices +
+    build_squad_view with ◀/▶) → `parse_payload`+`place_bet`; wired into `BetsCog`; 11 tests.
+  - [ ] `/minhas_apostas` delete control — a Select of the caller's open bets → `delete_bet`.
   - [x] `bot/subscribe_cog.py` — pure `decide_subscribe` (already/not subscribed → reply + perform?) +
     `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
     grounded vs discord.py role ops; 5 tests.
@@ -221,9 +221,13 @@ operating rules are in `RALPH.md`.
   `ui.TextInput[Modal]` mypy-strict patterns via scratch, then built `apostar_view.py` flow (FlowContext,
   GameChoice, games_to_choices, GameSelect→CategorySelect→ValueSelect/ScoreModal, `_finalize_bet`) +
   wired `/apostar` into BetsCog. 7 tests (builders incl. knockout draw-hiding integration + cmd reg).
-- **Next:** M6 — finish `/apostar`: FIRST_SCORER paginated squad Select (use `paginate`; load both
-  teams' `SquadRepository` rosters; ◀/▶ buttons or single page; add FIRST_SCORER to APOSTAR_CATEGORIES)
-  + the delete control on `/minhas_apostas` (a Select of the caller's open bets → `delete_bet`). Then
-  **M6 done → M7 poll cog** (active-window polling, auto-settlement via domain.settlement, results
-  message, stuck-game alert) — keep the settlement-apply + results-message PURE/testable; ground
-  `tasks.loop(seconds=)`. Reuse `settle_game`/`match_facts_from_result` + `first_genuine_scorer`.
+- **Iter 28 (M6 FIRST_SCORER):** `load_scorer_choices` (both teams' squads) + `build_squad_view`
+  (paginated ScorerSelect + ◀/▶ PageButtons) + FIRST_SCORER branch in CategorySelect; added FIRST_SCORER
+  to APOSTAR_CATEGORIES. /apostar now covers all 5 categories. 4 tests.
+- **Next:** M6 — `/minhas_apostas` **delete control**: build a Select of the caller's still-open bets
+  (matchup+category) → on select call `delete_bet`. Testable: a `build_open_bet_choices(session,
+  player_id, now)` (DB → list of deletable bets) + a `build_delete_view` (option count). Add a button on
+  /minhas_apostas to open it, or a separate `/minhas_apostas` always shows it when open bets exist.
+  Then **M6 DONE → M7 poll cog** (active-window polling → settle finished games via `settle_game` +
+  `match_facts_from_result` + store `first_scorer_player_id`; one results message per game; stuck-game
+  alert). Keep settlement-apply + results-message rendering PURE/testable; ground `tasks.loop(seconds=)`.
