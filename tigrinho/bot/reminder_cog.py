@@ -9,12 +9,25 @@ unit-tested; the :class:`ReminderCog` (``tasks.loop`` + send) is layered on top.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import datetime, timedelta, tzinfo
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta, tzinfo
 
+import discord
+from discord.ext import commands, tasks
+from sqlalchemy.orm import Session
+
+from tigrinho.config import Settings
 from tigrinho.db.models import Game
+from tigrinho.db.repositories import GameRepository
+from tigrinho.logging import get_logger
 
 from .sync_planning import format_kickoff_pt
+
+log = get_logger("tigrinho.bot.reminder")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 def select_due_reminders(games: Sequence[Game], *, now: datetime, lead_minutes: int) -> list[Game]:
@@ -41,3 +54,73 @@ def format_reminder_announcement(games: Sequence[Game], *, role_mention: str, tz
     ]
     lines.append("Corra para apostar com /apostar! 🐯")
     return "\n".join(lines)
+
+
+class ReminderCog(commands.Cog):
+    """Pre-game bet reminder loop (COMPLETION.md §9.4). DB-only — no provider."""
+
+    def __init__(
+        self,
+        bot: commands.Bot,
+        *,
+        settings: Settings,
+        session_factory: Callable[[], Session],
+        clock: Callable[[], datetime] = _utcnow,
+    ) -> None:
+        self.bot = bot
+        self.settings = settings
+        self.session_factory = session_factory
+        self._clock = clock
+
+    async def cog_load(self) -> None:
+        self.reminders.start()
+
+    async def cog_unload(self) -> None:
+        self.reminders.cancel()
+
+    @tasks.loop(minutes=1)
+    async def reminders(self) -> None:
+        try:
+            await self.run_reminders()
+        except Exception:
+            log.exception("reminders_failed")
+
+    @reminders.before_loop
+    async def _before_reminders(self) -> None:
+        await self.bot.wait_until_ready()
+
+    async def run_reminders(self) -> None:
+        """Post one combined pre-game reminder (pinging the role) for every game whose lead window
+        has opened and that hasn't been reminded. Resolve the channel BEFORE committing the dedup
+        flag: if it's unavailable (e.g. cold cache after a restart), skip without marking so the
+        next tick retries — here the message *is* the feature (§9.4)."""
+        now = self._clock()
+        with self.session_factory() as session:
+            due = select_due_reminders(
+                GameRepository(session).list_open(now),
+                now=now,
+                lead_minutes=self.settings.reminder_lead_minutes,
+            )
+            if not due:
+                return
+            channel = self._get_announce_channel()
+            if channel is None:
+                return  # cold/unavailable channel -> do not mark; retry next tick
+            message = format_reminder_announcement(
+                due,
+                role_mention=f"<@&{self.settings.tigrinhos_role_id}>",
+                tz=self.settings.tzinfo,
+            )
+            for game in due:
+                game.reminder_sent_at = now
+            session.commit()
+        await channel.send(message, allowed_mentions=discord.AllowedMentions(roles=True))
+
+    def _get_announce_channel(self) -> discord.abc.Messageable | None:
+        channel = self.bot.get_channel(self.settings.announce_channel_id)
+        if not isinstance(channel, discord.abc.Messageable):
+            log.warning(
+                "announce_channel_unavailable", channel_id=self.settings.announce_channel_id
+            )
+            return None
+        return channel

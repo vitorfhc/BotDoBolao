@@ -25,6 +25,7 @@ from .bets_cog import BetsCog
 from .board_cog import BoardCog
 from .help_cog import HelpCog
 from .poll_cog import PollCog
+from .reminder_cog import ReminderCog
 from .subscribe_cog import SubscribeCog
 from .sync_cog import SyncCog
 
@@ -88,6 +89,13 @@ class TigrinhoBot(commands.Bot):
             )
             await self.add_cog(
                 BoardCog(self, settings=self.settings, session_factory=self.session_factory)
+            )
+            await self.add_cog(
+                ReminderCog(
+                    self,
+                    settings=self.settings,
+                    session_factory=self.session_factory,
+                )
             )
             if self.provider_factory is not None:
                 await self.add_cog(

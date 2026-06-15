@@ -14,7 +14,7 @@ from tigrinho.db.models import Base
 from tigrinho.providers.base import FootballProvider
 from tigrinho.providers.fake import FakeProvider
 
-ALL_COGS = {"HelpCog", "SubscribeCog", "BetsCog", "BoardCog", "SyncCog", "PollCog"}
+ALL_COGS = {"HelpCog", "SubscribeCog", "BetsCog", "BoardCog", "SyncCog", "PollCog", "ReminderCog"}
 ALL_COMMANDS = {"ajuda", "inscrever", "sair", "minhas_apostas", "jogos", "apostar", "placar"}
 
 
