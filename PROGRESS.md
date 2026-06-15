@@ -103,7 +103,7 @@ operating rules are in `RALPH.md`.
   - [x] `build_standing_inputs(session)` (settled bets joined to player+game → `StandingInput`s) +
     `BoardCog` `/placar [periodo: geral|semana]` (Literal choices; public reply); 2 tests.
   - Note: BoardCog wires into the bot composition root at M10.
-- [ ] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
+- [x] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
   - [x] `tigrinho/cli.py` scaffold (Typer app + `games`/`players`/`bets` sub-apps, `__main__` entry,
     `_open_session` seam) + group 1 read: `games list`, `players list`; 4 CliRunner tests. Dep: `typer`.
   - [ ] Group 1 finish: `games show`, `bets list`, create/edit/delete (destructive → `--confirm`).
@@ -114,7 +114,10 @@ operating rules are in `RALPH.md`.
   - [x] `tigrinho/bootstrap.py::build_provider` (config→provider: fake or ApiFootball+budget; shared
     w/ M10 root) + CLI `squads seed <team_id>` (provider.get_squad→`replace_team`) + `sync run`
     (`collect_sync_messages`); `asyncio.run` inside sync Typer cmds; `_build_provider` seam; 4 tests.
-  - [ ] Group 4 `db dump` (export tables) + group 1 `games show`/`bets list`. Then M9 done.
+  - [x] Group 1 finish: `games show`, `bets list [--game/--player]`, `bets delete <id> --confirm`
+    (destructive→confirm flag, §13); group 4 `db dump` (per-table row counts). 7 tests.
+  - Note: record create/edit happens via flows (`sync run` creates games, `result set` edits results,
+    Discord auto-creates players/bets); the CLI covers list/show/delete + those admin edits.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
 
@@ -278,12 +281,13 @@ operating rules are in `RALPH.md`.
   (refactored `_open_session` to use `_settings`). 3 CliRunner tests.
 - **Iter 38 (M9 group 3):** `bootstrap.build_provider` (shared composition helper) + CLI `squads seed`
   + `sync run` (asyncio.run inside sync Typer cmds; `_build_provider` seam). 4 tests.
-- **Next:** finish M9 — `games show <fixture_id>` + `bets list [--game/--player]` (group 1 reads;
-  `bets list` needs a `BetRepository.list_all` or use list_for_game/player) + `db dump` (group 4: print
-  row counts per table, or dump rows — keep simple/testable). Then **M9 done → M10 deploy**: Dockerfile
-  (python:3.12-slim, non-root, uv/pip deps), entrypoint (`alembic upgrade head` then run bot),
-  docker-compose.yml (env_file, /data volume, config.yaml bind-mount, CONFIG_PATH), `.env.example`,
-  `config.example.yaml`, **full README (§15.1)**, `CLAUDE.md` (grounding + secrets-split + /ajuda-sync
-  maintenance rule), and the **bot composition root** (`run()` in bootstrap: load_settings →
-  configure_logging → build engine/session_factory + shared httpx client + provider_factory → construct
-  TigrinhoBot, add Sync/Poll/Bets/Subscribe/Board cogs in setup_hook → bot.run(token)). Then M11.
+- **Iter 39 (M9 group 1 + db dump, M9 DONE):** `games show`, `bets list [--game/--player]`,
+  `bets delete --confirm`, `db dump`; added `BetRepository.list_all`. 7 tests. **M9 complete.**
+- **Next:** M10 — Deploy, built incrementally:
+  (a) **Composition root** — `bootstrap.create_bot(settings, *, client)`: build engine + `session_factory`
+  + shared `httpx.AsyncClient`; `provider_factory = lambda s: build_provider(settings, s, client=client)`;
+  wire all cogs (Help, Subscribe, Sync, Poll, Bets, Board with deps) into `TigrinhoBot.setup_hook`; plus
+  `run()` (load_settings→configure_logging→create_bot→bot.run(token)). Unit-test setup_hook registers
+  every cog/command (offline). (b) `.env.example` + `config.example.yaml`. (c) Dockerfile (python:3.12-slim,
+  non-root, uv) + entrypoint (`alembic upgrade head` then run) + docker-compose.yml (env_file, /data
+  volume, config bind-mount, CONFIG_PATH); `docker compose config` validates. (d) `CLAUDE.md`. (e) README §15.1.

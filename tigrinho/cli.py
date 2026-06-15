@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 import typer
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from tigrinho.bootstrap import build_provider
@@ -23,9 +24,11 @@ from tigrinho.bot.poll_cog import apply_settlement
 from tigrinho.bot.sync_cog import collect_sync_messages
 from tigrinho.config import Settings, load_settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
+from tigrinho.db.models import ApiUsage, Bet, Game, Player
 from tigrinho.db.models import SquadPlayer as SquadPlayerRow
 from tigrinho.db.repositories import (
     ApiUsageRepository,
+    BetRepository,
     GameRepository,
     PlayerRepository,
     SquadRepository,
@@ -41,6 +44,7 @@ budget_app = typer.Typer(help="Orçamento de requisições da API.", no_args_is_
 board_app = typer.Typer(help="Recalcular o placar.", no_args_is_help=True)
 squads_app = typer.Typer(help="Cache de elencos.", no_args_is_help=True)
 sync_app = typer.Typer(help="Sincronização de jogos.", no_args_is_help=True)
+db_app = typer.Typer(help="Inspeção do banco de dados.", no_args_is_help=True)
 app.add_typer(games_app, name="games")
 app.add_typer(players_app, name="players")
 app.add_typer(bets_app, name="bets")
@@ -49,6 +53,7 @@ app.add_typer(budget_app, name="budget")
 app.add_typer(board_app, name="board")
 app.add_typer(squads_app, name="squads")
 app.add_typer(sync_app, name="sync")
+app.add_typer(db_app, name="db")
 
 
 def _settings() -> Settings:
@@ -83,6 +88,49 @@ def games_list() -> None:
             typer.echo(
                 f"{game.fixture_id}\t{game.home_team_name} x {game.away_team_name}\t"
                 f"{game.status}\t{game.kickoff_utc.isoformat()}"
+            )
+
+
+@games_app.command("show")
+def games_show(fixture_id: int = typer.Argument(..., help="ID do jogo (fixture_id).")) -> None:
+    """Mostra os detalhes de um jogo."""
+    with _open_session() as session:
+        game = GameRepository(session).get(fixture_id)
+        if game is None:
+            typer.echo(f"Jogo {fixture_id} não encontrado.")
+            raise typer.Exit(code=1)
+        typer.echo(f"fixture_id: {game.fixture_id}")
+        typer.echo(f"confronto: {game.home_team_name} x {game.away_team_name}")
+        typer.echo(f"stage: {game.stage}")
+        typer.echo(f"status: {game.status}")
+        typer.echo(f"kickoff_utc: {game.kickoff_utc.isoformat()}")
+        typer.echo(f"placar 90': {game.home_goals_90}-{game.away_goals_90}")
+        typer.echo(f"primeiro a marcar: {game.first_scorer_player_id}")
+        typer.echo(f"settled_at: {game.settled_at}")
+
+
+@bets_app.command("list")
+def bets_list(
+    game: int | None = typer.Option(None, "--game", help="Filtrar por fixture_id."),
+    player: int | None = typer.Option(None, "--player", help="Filtrar por player_discord_id."),
+) -> None:
+    """Lista apostas (todas, ou filtradas por jogo/jogador)."""
+    with _open_session() as session:
+        repo = BetRepository(session)
+        if game is not None:
+            bets = repo.list_for_game(game)
+        elif player is not None:
+            bets = repo.list_for_player(player)
+        else:
+            bets = repo.list_all()
+        if not bets:
+            typer.echo("(nenhuma aposta)")
+            return
+        for bet in bets:
+            typer.echo(
+                f"{bet.id}\tfix={bet.fixture_id}\tplayer={bet.player_discord_id}\t"
+                f"{bet.category}\t{bet.payload_json}\tcorrect={bet.is_correct}\t"
+                f"pts={bet.points_awarded}"
             )
 
 
@@ -206,6 +254,36 @@ def sync_run() -> None:
     typer.echo(f"Sincronização concluída: {len(messages)} aviso(s).")
     for message in messages:
         typer.echo(message)
+
+
+@bets_app.command("delete")
+def bets_delete(
+    bet_id: int = typer.Argument(..., help="ID da aposta a apagar."),
+    confirm: bool = typer.Option(False, "--confirm", help="Confirma a remoção (obrigatório)."),
+) -> None:
+    """Apaga uma aposta (admin; exige --confirm — COMPLETION.md §13)."""
+    if not confirm:
+        typer.echo("Operação destrutiva — use --confirm para apagar a aposta.")
+        raise typer.Exit(code=1)
+    with _open_session() as session:
+        repo = BetRepository(session)
+        bet = repo.get(bet_id)
+        if bet is None:
+            typer.echo(f"Aposta {bet_id} não encontrada.")
+            raise typer.Exit(code=1)
+        repo.delete(bet)
+        session.commit()
+    typer.echo(f"Aposta {bet_id} apagada.")
+
+
+@db_app.command("dump")
+def db_dump() -> None:
+    """Imprime a contagem de linhas de cada tabela (visão geral para debug — §13)."""
+    models = (Player, Game, Bet, SquadPlayerRow, ApiUsage)
+    with _open_session() as session:
+        for model in models:
+            count = session.scalar(select(func.count()).select_from(model)) or 0
+            typer.echo(f"{model.__tablename__}\t{count}")
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint

@@ -156,6 +156,9 @@ class BetRepository:
         )
         return list(self.session.scalars(stmt))
 
+    def list_all(self) -> list[Bet]:
+        return list(self.session.scalars(select(Bet).order_by(Bet.id)))
+
     def delete(self, bet: Bet) -> None:
         self.session.delete(bet)
 
