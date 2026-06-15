@@ -20,7 +20,8 @@ operating rules are in `RALPH.md`.
     (migration ⇄ models). Entrypoint `alembic upgrade head` wiring lands in M10 deploy.
 - [ ] **M2 — Provider:** value objects + `FootballProvider` Protocol, `FakeProvider`, `ApiFootballProvider`, `RequestBudget` (hard-stop at cap) + tests.
   - [x] `providers/base.py` — frozen value objects (`GoalEvent`, `Fixture`, `MatchResult`, `SquadPlayer`) + `Stage`/`GameStatus` enums + `@runtime_checkable FootballProvider` Protocol (4 async methods); 6 tests.
-  - [ ] `providers/fake.py` — `FakeProvider` (scripted fixtures/results) + tests.
+  - [x] `providers/fake.py` — `FakeProvider` (scripted fixtures/results/squads; `set_*` mutators for
+    multi-step sims; offline; returns copies; raises `LookupError` on unscripted match result); 8 tests.
   - [ ] `providers/budget.py` — `RequestBudget` (per-day counter, hard-stop at cap, `BudgetExceeded`) + tests.
   - [ ] `providers/api_football.py` — `ApiFootballProvider` (httpx) + JSON→value-object mapping tests (mock httpx). **Ground API-Football v3 first.**
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
@@ -89,6 +90,12 @@ operating rules are in `RALPH.md`.
   from the ORM `SquadPlayer` row — consumers needing both must alias. Ruff nits: prime char `′`→ASCII in
   docstring (RUF002); frozen-ness test uses a non-literal attr name for `setattr` (dodges B010 while
   still keeping mypy happy about the read-only attr).
-- **Next:** M2 — `providers/fake.py` (`FakeProvider`: scripted fixtures/results/squads, configurable;
-  satisfies the Protocol; used by tests + `provider_mode: fake`). No new external lib. Then `budget.py`,
-  then `api_football.py` (ground API-Football v3 before that one).
+- **Iter 9 (M2 fake.py):** `FakeProvider` — scriptable in-memory provider; ctor takes
+  fixtures/live_results/match_results/squads, plus `set_*` mutators for poll/sync simulations; returns
+  list copies; `get_fixtures` ignores `window_hours` (script what you want); unscripted match result →
+  `LookupError`. 8 tests (incl. Protocol conformance). No external surface.
+- **Next:** M2 — `providers/budget.py` (`RequestBudget`): wraps a provider call; reads today's count
+  from `ApiUsageRepository` in `api_budget_reset_tz`; if `count >= api_daily_cap` raise `BudgetExceeded`
+  (no request); else run call + increment. Pure-ish: inject the repo + a `now`/today provider + the
+  cap. Tests: under cap increments, at cap raises and does NOT call. Then `api_football.py` (ground
+  API-Football v3 first).
