@@ -64,11 +64,15 @@ Add one **nullable** column to `games` (model `db/models.py:Game`, plus migratio
 
 Defaults `NULL`. Persisting it makes the reminder **restart-safe and idempotent**: a restart never
 re-pings a game already reminded. New migration `down_revision = "b7c3f1a9d2e4"` (current head).
-Mirrors the existing `kickoff_announced_at` dedup column; the existing `announced_at` (daily
-new-games announcement) and `kickoff_announced_at` (live kickoff) columns are **not** reused.
 
-`_game_from_fixture` in `sync_cog.py` sets `reminder_sent_at=None` on insert (like the other dedup
-columns).
+The genuine dedup-by-timestamp precedent is `kickoff_announced_at` / `last_announced_home_goals` /
+`last_announced_away_goals`, which are set at **runtime** in `poll_cog.py` and rely on the ORM
+nullable default at insert. `reminder_sent_at` follows the same pattern, so it needs **no**
+`_game_from_fixture` change — that constructor passes only `announced_at=None` and `settled_at=None`
+explicitly and leaves every dedup column to default to `NULL`. (The `announced_at` column is
+currently **vestigial**: declared and set to `None` on insert but never read — the daily new-games
+announcement dedups on `plan.new` (was-this-fixture-newly-inserted), not on a timestamp. It is not a
+precedent and is not reused.)
 
 ### 2. Config (`config.py`, `config.example.yaml`, §4 table)
 
@@ -109,13 +113,21 @@ mirroring the other cogs. It takes `settings`, `session_factory`, and an injecta
 1. Open a session; `due = select_due_reminders(GameRepository(session).list_open(now), now=now,
    lead_minutes=settings.reminder_lead_minutes)`.
 2. If `due` is empty → return (no message, no commit needed).
-3. Build the combined message via `format_reminder_announcement`; set `reminder_sent_at = now` on
-   each due game; **commit**.
-4. Send to `announce_channel_id` with `AllowedMentions(roles=True)`.
+3. **Resolve the announce channel first.** If it is unavailable (`get_channel` returns `None` / not
+   messageable — most likely right after a restart while the gateway cache is still cold, even
+   though `wait_until_ready` has fired), log `announce_channel_unavailable` and return **without**
+   setting or committing `reminder_sent_at`, so the next tick retries. This is the key departure
+   from the kickoff/goal/results cogs: there a dropped message is cosmetic and self-correcting, but
+   here **the reminder message *is* the entire feature** — a silently-skipped send that had already
+   committed the dedup flag would mean the game is never reminded (the next tick filters it out, and
+   once kickoff passes `list_open` drops it).
+4. With the channel resolved: build the combined message via `format_reminder_announcement`, set
+   `reminder_sent_at = now` on each due game, **commit**, then send with `AllowedMentions(roles=True)`.
 
-This is the same **commit-then-send / restart-safe** ordering the other cogs use: the dedup flag is
-persisted before the network send, so a crash never double-pings (at the cost, shared with the other
-cogs, of a rare lost message if the send itself fails after commit).
+Ordering rationale: committing the dedup flag before the network send keeps it **restart-safe** (a
+crash never double-pings). Guarding the cold-cache case in step 3 removes the realistic
+silent-no-reminder failure; the only residual loss is if the send itself *raises* after a successful
+resolve + commit — the same rare, accepted tradeoff the other cogs already carry.
 
 Registered in `client.py:_register_cogs` inside the `if self.session_factory is not None:` block —
 **no `provider_factory` required**.
@@ -125,7 +137,20 @@ Registered in `client.py:_register_cogs` inside the `if self.session_factory is 
 - **Bot offline through the window, back before kickoff** → fires late (window is
   `[kickoff - lead, kickoff)`).
 - **Bot offline past kickoff** → never fires; `now >= kickoff_utc` excludes it and bets are closed.
-- **Rescheduled game** → `reminder_sent_at` reset on reschedule → reminded again for the new time.
+- **Rescheduled game** → `reminder_sent_at` is reset in `apply_plan`'s reschedule branch, so the
+  game earns a fresh reminder for its new time — **but** that reset only runs at the **once-daily**
+  sync (`SyncCog`, `tasks.loop(time=sync_time)`). A reschedule to a *sooner* kickoff that lands
+  inside the lead window (or already passed) **before** the next daily sync will not be re-reminded:
+  the still-set flag suppresses it, and `list_open`'s `kickoff_utc > now` drops the game once the new
+  kickoff passes. This once-daily detection lag is the same one §9.1's reschedule re-announcement
+  already carries, so the behavior is consistent — **accepted, not fixed here**.
+- **Game first opened *inside* its own lead window** → if a daily sync inserts and open-announces a
+  game (with an `@Tigrinhos` ping) while `now` is already within `[kickoff - lead, kickoff)`, the
+  next reminder tick fires a second `@Tigrinhos` ping shortly after. Reachability is low (WC knockout
+  teams normally resolve a day+ before kickoff, and `sync_time` rarely sits within an hour of a
+  kickoff) — **accepted corner case**. If it proves real, suppress the reminder when the open
+  announcement was itself inside the lead window; resolving it firmly requires confirming the
+  provider's knockout team-resolution timing.
 - **Postponed / cancelled (VOID)** → dropped by `list_open` (it filters `settled_at IS NULL`, and
   voiding sets `settled_at`) → never reminded.
 - **Simultaneous kickoffs** → all due games in the tick are combined into one message / one ping.
@@ -154,7 +179,8 @@ Singular (one game) vs plural (multiple bullets) phrasing handled in `format_rem
 - **Pure (`format_reminder_announcement`):** single game vs multiple games, role mention present,
   localized kickoff in `timezone`.
 - **DB/integration:** the cog path marks `reminder_sent_at` and produces exactly one message;
-  re-running the same tick produces **no** second message (idempotent). `apply_plan` reschedule
+  re-running the same tick produces **no** second message (idempotent). When the announce channel is
+  unavailable, `reminder_sent_at` is **not** set and the next tick retries. `apply_plan` reschedule
   resets `reminder_sent_at`.
 - **Config:** `reminder_lead_minutes` default and `> 0` validation.
 - **Migration:** column added (upgrade) and removed (downgrade).
