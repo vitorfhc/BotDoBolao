@@ -48,7 +48,7 @@ operating rules are in `RALPH.md`.
   - [x] `bot/help_cog.py` — `HelpCog` `/ajuda` → ephemeral embed via `build_help_embed`.
   - Note: full `run()`/`__main__` entrypoint (load_settings→configure_logging→run) lands in M10; future
     cogs (M5–M8) get added in `setup_hook`. 8 tests (intents/embed/role-check/bot-construction).
-- [ ] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
+- [x] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
   - [x] `bot/sync_planning.py` (pure) — `compute_match_hash` (§6), `is_placeholder_fixture`, `plan_sync`
     (new[scheduled+unseen] / rescheduled[kickoff changed] / voided[POSTPONED|CANCELLED & seen & not-void]),
     pt-BR text: `format_kickoff_pt`, `format_new_games_announcement` (role ping), reschedule/void notices;
@@ -56,9 +56,12 @@ operating rules are in `RALPH.md`.
   - [x] `bot/sync_cog.py::apply_plan` (discord-free) — insert new games (match_hash + kickoff_local +
     SCHEDULED), update rescheduled (kickoff/local/hash), void cancelled (status VOID + settled_at + void
     its bets: 0 pts, is_correct None, settled_at); returns `AppliedSync` counts; 4 DB tests.
-  - [ ] `SyncCog` class — `tasks.loop(time=sync_time)`: build `ExistingGame` map → `get_fixtures(48)` via
-    provider → `plan_sync` → `apply_plan` → commit → send announcement + reschedule/void notices to
-    `announce_channel_id`. **Ground discord.py `ext.tasks` + `channel.send` + `AllowedMentions`.**
+  - [x] `collect_sync_messages` (testable orchestration: existing-map → `get_fixtures(48)` → `plan_sync`
+    → `apply_plan` → messages) + `SyncCog` (`tasks.loop(time=sync_time, tz-aware)`, `before_loop`
+    wait_until_ready, `run_sync` opens session/commits, `_send` to `announce_channel_id` with
+    `AllowedMentions(roles=True)`, BudgetExceeded→skip); grounded vs discord.py `ext.tasks`; 5 tests.
+  - Note: SyncCog (+ session_factory/provider_factory) is wired into the bot's composition root at M10
+    (shared engine/provider construction with the CLI); the orchestration + send are tested now.
 - [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
 - [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
 - [ ] **M8 — Board cog:** `/placar geral|semana` with tie-breaks.
@@ -177,11 +180,14 @@ operating rules are in `RALPH.md`.
   UTC-normalizing `TZDateTime`, so it stores the *same instant* as `kickoff_utc` (wall-clock not kept) —
   it's redundant; display localizes from `kickoff_utc` via `settings.timezone` (already in sync_planning).
   Noted in COMPLETION.md §6. Avoided a `# type: ignore` in tests via an explicit assert.
-- **Next:** M5 — `bot/sync_cog.py` (the gateway/DB glue). **Ground discord.py `ext.tasks`**
-  (`@tasks.loop(time=...)`, `before_loop`/`wait_until_ready`, error handling) + `channel.send` +
-  `discord.AllowedMentions(roles=True)` so the `@Tigrinhos` ping actually notifies. Cog: daily loop at
-  `settings.sync_time` (tz) → `provider.get_fixtures(48)` via `RequestBudget` → build `ExistingGame`
-  map from `GameRepository` → `plan_sync` → apply (insert new w/ match_hash+kickoff_local, update
-  rescheduled, set VOID + void bets) → commit → send consolidated announcement + reschedule/void
-  notices to `announce_channel_id`; catch+log+alert per cycle. Keep DB/Discord glue thin; consider a
-  small pure `apply_*` seam if useful. Then M5 done → M6 commands.
+- **Iter 20 (M5 SyncCog, M5 DONE):** `collect_sync_messages` (testable orchestration, real DB +
+  FakeProvider, no gateway) + `SyncCog` (tz-aware `tasks.loop`, `before_loop` wait_until_ready,
+  `run_sync` session+commit, `_send` with `AllowedMentions(roles=True)`, BudgetExceeded→skip).
+  Grounded discord.py `ext.tasks`. 5 tests (announce/reschedule/void/no-change + cog construct/send-noop).
+  **M5 complete.** SyncCog wiring into setup_hook deferred to M10 composition root.
+- **Next:** M6 — Commands cog(s): `/apostar` (component flow: open-games select → category select →
+  modal/select → confirm/upsert), `/minhas_apostas` (list + delete open), `/jogos`, time-based closing
+  (now < kickoff_utc, no API call); `/inscrever` & `/sair` (Tigrinhos role add/remove, ephemeral).
+  **Ground discord.py UI: `discord.ui.View`/`Select`/`Button`/`Modal`, `app_commands` in a Cog,
+  `Interaction.response`/`followup`, `member.add_roles`/`remove_roles`.** Keep bet build/validation +
+  closing checks + human-readable rendering PURE/testable (reuse domain.bets + text_pt); thin UI layer.
