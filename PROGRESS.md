@@ -119,6 +119,14 @@ operating rules are in `RALPH.md`.
   - Note: record create/edit happens via flows (`sync run` creates games, `result set` edits results,
     Discord auto-creates players/bets); the CLI covers list/show/delete + those admin edits.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
+  - [x] Composition root: `bootstrap.create_bot(settings)` (engine + session_factory + shared httpx
+    client + provider_factory) + `run()`; `TigrinhoBot.__init__` takes the factories; `setup_hook`→
+    `_register_cogs` wires Help/Subscribe/Bets/Board/Sync/Poll; `tigrinho/__main__.py` (`python -m tigrinho`); 2 tests.
+  - [ ] `.env.example` + `config.example.yaml` (commit; §4).
+  - [ ] Dockerfile (python:3.12-slim, non-root, uv) + entrypoint (`alembic upgrade head` then run) +
+    docker-compose.yml (env_file, /data volume, config bind-mount, CONFIG_PATH); `docker compose config` validates.
+  - [ ] `CLAUDE.md` (grounding rule, secrets/settings split, /ajuda-in-sync maintenance rule).
+  - [ ] `README.md` — full deploy guide (§15.1, 14 sections).
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
 
 ## Notes / blockers / decisions
@@ -283,11 +291,10 @@ operating rules are in `RALPH.md`.
   + `sync run` (asyncio.run inside sync Typer cmds; `_build_provider` seam). 4 tests.
 - **Iter 39 (M9 group 1 + db dump, M9 DONE):** `games show`, `bets list [--game/--player]`,
   `bets delete --confirm`, `db dump`; added `BetRepository.list_all`. 7 tests. **M9 complete.**
-- **Next:** M10 — Deploy, built incrementally:
-  (a) **Composition root** — `bootstrap.create_bot(settings, *, client)`: build engine + `session_factory`
-  + shared `httpx.AsyncClient`; `provider_factory = lambda s: build_provider(settings, s, client=client)`;
-  wire all cogs (Help, Subscribe, Sync, Poll, Bets, Board with deps) into `TigrinhoBot.setup_hook`; plus
-  `run()` (load_settings→configure_logging→create_bot→bot.run(token)). Unit-test setup_hook registers
-  every cog/command (offline). (b) `.env.example` + `config.example.yaml`. (c) Dockerfile (python:3.12-slim,
-  non-root, uv) + entrypoint (`alembic upgrade head` then run) + docker-compose.yml (env_file, /data
-  volume, config bind-mount, CONFIG_PATH); `docker compose config` validates. (d) `CLAUDE.md`. (e) README §15.1.
+- **Iter 40 (M10 composition root):** `create_bot`/`run` in bootstrap + `TigrinhoBot` factory params +
+  `_register_cogs` (all 6 cogs) + `tigrinho/__main__.py`. 2 tests (all cogs/commands registered offline;
+  create_bot builds runtime). Cog `tasks.loop`s cancelled via `remove_cog` in tests.
+- **Next:** M10 (b) — `.env.example` (DISCORD_TOKEN, API_FOOTBALL_KEY) + `config.example.yaml` (every §4
+  key with the example values). Commit both (real `.env`/`config.yaml` already gitignored). No tests
+  (static files); optionally a tiny test that `config.example.yaml` loads via `load_settings`. Then (c)
+  Dockerfile+entrypoint+compose, (d) CLAUDE.md, (e) README §15.1 — one per iteration.
