@@ -740,7 +740,6 @@ async def collect_poll_outcome(
                     timeline = (await provider.get_match_result(game.fixture_id)).goals
                 announcements, new_home, new_away = reconcile_goals(
                     home_team_id=game.home_team_id,
-                    away_team_id=game.away_team_id,
                     home_team_name=game.home_team_name,
                     away_team_name=game.away_team_name,
                     stored_home=game.last_announced_home_goals,
