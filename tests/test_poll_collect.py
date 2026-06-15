@@ -190,10 +190,14 @@ async def test_collect_live_game_announces_kickoff_without_settling(session: Ses
 
 
 async def test_collect_kickoff_announced_once(session: Session) -> None:
-    # Second poll of an already-announced live game must NOT re-announce the kickoff.
+    # Across a simulated restart (commit + fresh identity map), an already-announced kickoff must
+    # NOT be re-announced — dedup relies on the persisted kickoff_announced_at, not the cached row.
     _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)
     provider = FakeProvider(recent_results=[_result(GameStatus.LIVE)])
-    await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    first = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert [k.fixture_id for k in first.kickoffs] == [1]
+    session.commit()
+    session.expunge_all()  # evict cached ORM objects so the next poll reloads from the DB
     second = await collect_poll_outcome(session, provider, _settings(), now=NOW)
     assert second.kickoffs == []
 
@@ -277,6 +281,25 @@ async def test_collect_goal_announced_once_across_restart(session: Session) -> N
     )
     first = await collect_poll_outcome(session, provider, _settings(), now=NOW)
     assert len(first.goals) == 1
-    # Same live score next cycle (e.g. after a restart): persisted counter prevents a re-announce.
+    session.commit()
+    session.expunge_all()  # simulate a restart: the dedup must come from the persisted counters
     second = await collect_poll_outcome(session, provider, _settings(), now=NOW)
     assert second.goals == []
+
+
+async def test_collect_kickoff_and_goal_in_same_cycle(session: Session) -> None:
+    # A game first seen already LIVE at 1-0: kickoff AND the goal are announced in one pass.
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)
+    goal = GoalEvent(5, 10, 7, "Neymar", is_own_goal=False, is_penalty=False)
+    provider = FakeProvider(
+        recent_results=[_live_result(GameStatus.LIVE, 1, 0)],
+        match_results=[_live_result(GameStatus.LIVE, 1, 0, goals=(goal,))],
+    )
+    outcome = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert [k.fixture_id for k in outcome.kickoffs] == [1]
+    assert len(outcome.goals) == 1
+    assert outcome.goals[0].announcement.scorer_name == "Neymar"
+    game = GameRepository(session).get(1)
+    assert game is not None
+    assert game.kickoff_announced_at == NOW
+    assert game.last_announced_home_goals == 1 and game.last_announced_away_goals == 0

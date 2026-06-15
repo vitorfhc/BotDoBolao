@@ -125,10 +125,10 @@ def detect_goal_deltas(
 ) -> GoalDelta:
     """New goals per side since the last announced score. Decreases (VAR) yield zero — the caller
     resyncs the stored score down without announcing. ``None`` is treated as 0."""
-    sh = stored_home or 0
-    sa_ = stored_away or 0
-    ch = current_home or 0
-    ca = current_away or 0
+    sh = 0 if stored_home is None else stored_home
+    sa_ = 0 if stored_away is None else stored_away
+    ch = 0 if current_home is None else current_home
+    ca = 0 if current_away is None else current_away
     return GoalDelta(home_new=max(0, ch - sh), away_new=max(0, ca - sa_))
 
 
@@ -155,8 +155,8 @@ def reconcile_goals(
     side whose live score dropped (VAR) is silently resynced — no announcement — while the other
     side is still processed. ``None`` live scores leave that side unchanged.
     """
-    sh = stored_home or 0
-    sa_ = stored_away or 0
+    sh = 0 if stored_home is None else stored_home
+    sa_ = 0 if stored_away is None else stored_away
     ch = current_home if current_home is not None else sh
     ca = current_away if current_away is not None else sa_
 
@@ -364,6 +364,8 @@ async def collect_poll_outcome(
                 kickoffs.append(
                     KickoffNotice(game.fixture_id, game.home_team_name, game.away_team_name)
                 )
+            # Skip goal detection when the live score is entirely unknown (pre-score minutes or a
+            # brief API hiccup): the persisted counters stay put, which keeps the poll idempotent.
             if result.home_goals is not None or result.away_goals is not None:
                 delta = detect_goal_deltas(
                     stored_home=game.last_announced_home_goals,
