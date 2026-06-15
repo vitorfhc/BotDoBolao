@@ -138,8 +138,10 @@ operating rules are in `RALPH.md`.
   - [x] Budget-enforcement e2e (`test_budget_cap_blocks_http_in_poll`): `ApiFootballProvider` (mock
     httpx) with budget at cap, driven through `collect_settlements` → `BudgetExceeded` and the HTTP
     handler is never called.
-  - [ ] Edge-case/coverage sweep (run `pytest --cov` on domain; confirm scoring/settlement ~100%); add
-    any missing edge tests. Final full gates + `docker compose config` pass → then the promise.
+  - [x] Coverage sweep: `tigrinho/domain` at **100% line+branch** (bets/scoring/settlement/text_pt);
+    added a knockout-no-advancing-team edge test (`pytest-cov` dev dep).
+  - [ ] Final completion check (re-run all gates + `docker compose config` + e2e/budget-e2e; verify
+    files + all boxes) → then the promise.
 
 ## Notes / blockers / decisions
 - **Iter 1 (M0 scaffold):** Chose `uv` as the project runner. Gates command is

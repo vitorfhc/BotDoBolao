@@ -21,6 +21,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "types-pyyaml>=6.0.12.20260518",
+    "pytest-cov>=7.1.0",
 ]
 
 [build-system]
