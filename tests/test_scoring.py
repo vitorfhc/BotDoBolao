@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 import pytest
 
 from tigrinho.domain.bets import (
@@ -23,7 +21,7 @@ from tigrinho.domain.scoring import (
     is_winning_bet,
     score_bet,
 )
-from tigrinho.providers.base import GoalEvent, Stage
+from tigrinho.providers.base import Stage
 
 HOME_TEAM = 10
 AWAY_TEAM = 20
@@ -34,7 +32,6 @@ def _facts(
     stage: Stage = Stage.GROUP,
     home: int = 0,
     away: int = 0,
-    goals: Sequence[GoalEvent] = (),
     advancing: int | None = None,
 ) -> MatchFacts:
     return MatchFacts(
@@ -43,7 +40,6 @@ def _facts(
         away_team_id=AWAY_TEAM,
         home_goals_90=home,
         away_goals_90=away,
-        goals=tuple(goals),
         advancing_team_id=advancing,
     )
 

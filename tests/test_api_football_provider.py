@@ -189,21 +189,10 @@ async def test_does_not_retry_client_error_4xx(usage: ApiUsageRepository) -> Non
     assert calls == 1  # no retry on a client error
 
 
-async def test_get_match_result_merges_events_and_consumes_two_requests(
+async def test_get_match_result_consumes_one_request(
     usage: ApiUsageRepository,
 ) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/fixtures/events"):
-            events = [
-                {
-                    "time": {"elapsed": 10},
-                    "team": {"id": 10},
-                    "player": {"id": 7, "name": "Neymar"},
-                    "type": "Goal",
-                    "detail": "Normal Goal",
-                }
-            ]
-            return httpx.Response(200, json=_envelope(events))
         fixture = {
             "fixture": {"id": 100, "date": "2026-06-15T12:00:00+00:00", "status": {"short": "FT"}},
             "league": {"id": 1, "round": "Final"},
@@ -219,9 +208,7 @@ async def test_get_match_result_merges_events_and_consumes_two_requests(
     result = await provider.get_match_result(100)
     assert result.home_goals_90 == 1
     assert result.advancing_team_id == 10
-    assert len(result.goals) == 1
-    assert result.goals[0].player_name == "Neymar"
-    assert usage.get_count(NOW.date()) == 2  # /fixtures + /fixtures/events
+    assert usage.get_count(NOW.date()) == 1  # single /fixtures call (no events)
 
 
 async def test_get_match_result_missing_fixture_raises(usage: ApiUsageRepository) -> None:

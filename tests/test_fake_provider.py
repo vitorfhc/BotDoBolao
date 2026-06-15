@@ -39,7 +39,6 @@ def _result(fid: int = 1) -> MatchResult:
         stage=Stage.GROUP,
         home_goals_90=2,
         away_goals_90=1,
-        goals=(),
         advancing_team_id=None,
     )
 

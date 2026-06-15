@@ -50,7 +50,6 @@ def match_facts_from_result(
         away_team_id=away_team_id,
         home_goals_90=result.home_goals_90,
         away_goals_90=result.away_goals_90,
-        goals=result.goals,
         advancing_team_id=result.advancing_team_id,
     )
 

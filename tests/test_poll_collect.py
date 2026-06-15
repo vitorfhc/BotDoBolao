@@ -18,7 +18,6 @@ from tigrinho.domain.bets import WinnerPayload, WinnerSelection, dump_payload
 from tigrinho.providers.base import (
     Fixture,
     GameStatus,
-    GoalEvent,
     MatchResult,
     SquadPlayer,
     Stage,
@@ -71,14 +70,13 @@ def _add_game(session: Session, fid: int, *, kickoff: datetime, settled: datetim
     session.flush()
 
 
-def _result(status: GameStatus, *, goals: tuple[GoalEvent, ...] = ()) -> MatchResult:
+def _result(status: GameStatus) -> MatchResult:
     return MatchResult(
         fixture_id=1,
         status=status,
         stage=Stage.GROUP,
         home_goals_90=2 if status is GameStatus.FINISHED else None,
         away_goals_90=1 if status is GameStatus.FINISHED else None,
-        goals=goals,
         advancing_team_id=None,
     )
 
@@ -126,9 +124,7 @@ async def test_collect_self_heals_overdue_game_within_grace(session: Session) ->
     )
     provider = FakeProvider(
         recent_results=[_result(GameStatus.FINISHED)],
-        match_results=[
-            _result(GameStatus.FINISHED, goals=(GoalEvent(10, 10, 7, "N", False, False),))
-        ],
+        match_results=[_result(GameStatus.FINISHED)],
     )
     settled = await collect_settlements(session, provider, _settings(), now=NOW)
     assert len(settled) == 1  # self-healed despite being past the match window
@@ -148,9 +144,7 @@ async def test_collect_settles_finished_active_game(session: Session) -> None:
     )
     provider = FakeProvider(
         recent_results=[_result(GameStatus.FINISHED)],  # status feed: no goals
-        match_results=[
-            _result(GameStatus.FINISHED, goals=(GoalEvent(10, 10, 7, "N", False, False),))
-        ],
+        match_results=[_result(GameStatus.FINISHED)],
     )
     settled = await collect_settlements(session, provider, _settings(), now=NOW)
     assert len(settled) == 1

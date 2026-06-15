@@ -13,7 +13,6 @@ import pytest
 from tigrinho.providers.api_football import (
     normalize_status,
     parse_fixture,
-    parse_goal_events,
     parse_kickoff,
     parse_match_result,
     parse_squad_players,
@@ -122,7 +121,6 @@ def test_parse_match_result_uses_fulltime_not_et_or_penalty() -> None:
     assert result.home_goals_90 == 1  # score.fulltime, NOT penalty
     assert result.away_goals_90 == 1
     assert result.advancing_team_id == 20  # teams.away.winner == True
-    assert result.goals == ()  # no events merged in
 
 
 def test_parse_match_result_group_no_advancing() -> None:
@@ -139,79 +137,6 @@ def test_parse_match_result_group_no_advancing() -> None:
     result = parse_match_result(item)
     assert result.advancing_team_id is None
     assert result.home_goals_90 == 1
-
-
-_EVENTS: list[dict[str, Any]] = [
-    {
-        "time": {"elapsed": 10, "extra": None},
-        "team": {"id": 10},
-        "player": {"id": 7, "name": "Neymar"},
-        "type": "Goal",
-        "detail": "Normal Goal",
-    },
-    {
-        "time": {"elapsed": 20, "extra": None},
-        "team": {"id": 20},
-        "player": {"id": 99, "name": "Own Guy"},
-        "type": "Goal",
-        "detail": "Own Goal",
-    },
-    {
-        "time": {"elapsed": 30, "extra": None},
-        "team": {"id": 10},
-        "player": {"id": 8, "name": "Penalty Taker"},
-        "type": "Goal",
-        "detail": "Penalty",
-    },
-    {
-        "time": {"elapsed": 40, "extra": None},
-        "team": {"id": 20},
-        "player": {"id": 50, "name": "Misser"},
-        "type": "Goal",
-        "detail": "Missed Penalty",
-    },
-    {
-        "time": {"elapsed": 35, "extra": None},
-        "team": {"id": 10},
-        "player": {"id": 9, "name": "Booked"},
-        "type": "Card",
-        "detail": "Yellow Card",
-    },
-    {
-        "time": {"elapsed": 105, "extra": None},
-        "team": {"id": 10},
-        "player": {"id": 11, "name": "ET Scorer"},
-        "type": "Goal",
-        "detail": "Normal Goal",
-    },
-]
-
-
-def test_parse_goal_events_filters_and_flags() -> None:
-    goals = parse_goal_events(_EVENTS)
-    # Kept: Normal@10, Own@20, Penalty@30, Normal(ET)@105. Excluded: Missed Penalty, Card.
-    assert [g.minute for g in goals] == [10, 20, 30, 105]
-    assert goals[0].player_name == "Neymar"
-    assert goals[0].is_own_goal is False
-    assert goals[0].is_penalty is False
-    assert goals[1].is_own_goal is True
-    assert goals[2].is_penalty is True
-    assert goals[3].minute == 105  # ET goal kept; domain applies the <=90 filter
-
-
-def test_parse_goal_events_handles_missing_player() -> None:
-    events: list[dict[str, Any]] = [
-        {
-            "time": {"elapsed": 50},
-            "team": {"id": 10},
-            "player": {"id": None, "name": None},
-            "type": "Goal",
-            "detail": "Normal Goal",
-        }
-    ]
-    goals = parse_goal_events(events)
-    assert goals[0].player_id is None
-    assert goals[0].player_name is None
 
 
 def test_parse_squad_players() -> None:

@@ -36,18 +36,6 @@ class GameStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class GoalEvent:
-    """A single goal within a match. ``player_id``/``player_name`` may be unknown."""
-
-    minute: int
-    team_id: int
-    player_id: int | None
-    player_name: str | None
-    is_own_goal: bool
-    is_penalty: bool
-
-
-@dataclass(frozen=True, slots=True)
 class Fixture:
     """An upcoming/known fixture. ``kickoff_local`` and ``match_hash`` are derived by the app."""
 
@@ -65,8 +53,8 @@ class Fixture:
 class MatchResult:
     """Live or final result. Scores are the **90-minute** regulation result (COMPLETION.md §7.2).
 
-    ``goals`` is ordered by minute ascending. ``advancing_team_id`` is set only for knockout
-    fixtures (the side that progresses, derived from extra time / penalties).
+    ``advancing_team_id`` is set only for knockout fixtures (the side that progresses, derived
+    from extra time / penalties).
     """
 
     fixture_id: int
@@ -74,7 +62,6 @@ class MatchResult:
     stage: Stage
     home_goals_90: int | None
     away_goals_90: int | None
-    goals: tuple[GoalEvent, ...]
     advancing_team_id: int | None
 
 

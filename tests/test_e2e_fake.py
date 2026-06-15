@@ -29,7 +29,7 @@ from tigrinho.domain.bets import (
     WinnerPayload,
     WinnerSelection,
 )
-from tigrinho.providers.base import Fixture, GameStatus, GoalEvent, MatchResult, Stage
+from tigrinho.providers.base import Fixture, GameStatus, MatchResult, Stage
 from tigrinho.providers.fake import FakeProvider
 
 T0 = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)  # sync + place bets (before kickoff)
@@ -103,19 +103,9 @@ async def test_end_to_end_fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         )
         session.commit()
 
-    # 3) SETTLE — game finished 2x1 (Brasil), first scorer #7; poll settles it within the window.
-    provider.set_recent_results([MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, (), None)])
-    provider.set_match_result(
-        MatchResult(
-            1,
-            GameStatus.FINISHED,
-            Stage.GROUP,
-            2,
-            1,
-            (GoalEvent(10, 10, 7, "Neymar", is_own_goal=False, is_penalty=False),),
-            None,
-        )
-    )
+    # 3) SETTLE — game finished 2x1 (Brasil); poll settles it within the window.
+    provider.set_recent_results([MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, None)])
+    provider.set_match_result(MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, None))
     with factory() as session:
         settled = await collect_settlements(session, provider, settings, now=T_SETTLE)
         session.commit()

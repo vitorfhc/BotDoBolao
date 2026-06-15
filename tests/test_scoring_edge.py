@@ -16,7 +16,6 @@ def _knockout_facts(advancing: int | None) -> MatchFacts:
         away_team_id=20,
         home_goals_90=1,
         away_goals_90=1,
-        goals=(),
         advancing_team_id=advancing,
     )
 

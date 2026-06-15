@@ -141,8 +141,8 @@ async def collect_settlements(
     grace, so late finishes (extra time, penalties) and API status lag recover with no manual step.
     Returns immediately with no provider call if nothing is pollable. One date-windowed call fetches
     current statuses for all games at once; only games reported finished cost an extra per-game
-    request (the goal timeline). May raise ``BudgetExceeded`` (the cog turns it into a skip). No
-    commit — the caller commits.
+    request (the authoritative final result). May raise ``BudgetExceeded`` (the cog turns it into a
+    skip). No commit — the caller commits.
     """
     games = GameRepository(session)
     pollable = games.list_active(now, settings.settle_grace_hours)

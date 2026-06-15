@@ -27,7 +27,7 @@ from tigrinho.domain.bets import (
     WinnerSelection,
     dump_payload,
 )
-from tigrinho.providers.base import GameStatus, GoalEvent, MatchResult, Stage
+from tigrinho.providers.base import GameStatus, MatchResult, Stage
 
 NOW = datetime(2026, 6, 15, 18, 0, tzinfo=UTC)
 
@@ -94,7 +94,6 @@ def _result() -> MatchResult:
         stage=Stage.GROUP,
         home_goals_90=2,
         away_goals_90=1,
-        goals=(GoalEvent(10, 10, 7, "Neymar", is_own_goal=False, is_penalty=False),),
         advancing_team_id=None,
     )
 

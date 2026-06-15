@@ -8,8 +8,6 @@ Field paths, status codes, and endpoints verified against the live API-Football 
 - Base ``https://v3.football.api-sports.io``; auth header ``x-apisports-key``.
 - ``GET /fixtures`` -> ``response[].{fixture.{id,date,status.short}, league.round,
   teams.{home,away}.{id,name,winner}, score.{fulltime,extratime,penalty}.{home,away}}``.
-- ``GET /fixtures/events`` -> ``response[].{time.{elapsed,extra}, team.id, player.{id,name},
-  type, detail}``.
 - ``GET /players/squads`` -> ``response[].{team.id, players[].{id,name,position}}``.
 """
 
@@ -22,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from .base import Fixture, GameStatus, GoalEvent, MatchResult, SquadPlayer, Stage
+from .base import Fixture, GameStatus, MatchResult, SquadPlayer, Stage
 from .budget import RequestBudget
 from .retry import retry_async
 
@@ -50,9 +48,6 @@ _STATUS_MAP: dict[str, GameStatus] = {
     "AWD": GameStatus.CANCELLED,
     "WO": GameStatus.CANCELLED,
 }
-
-# Event details that represent an actual goal (excludes "Missed Penalty", cards, subs, etc.).
-_GOAL_DETAILS = frozenset({"Normal Goal", "Penalty", "Own Goal"})
 
 # Substrings (lowercased round name) that mark a knockout round.
 _KNOCKOUT_MARKERS = ("round of", "quarter", "semi", "final", "3rd place", "play-off", "playoff")
@@ -108,13 +103,8 @@ def parse_fixture(item: Mapping[str, Any]) -> Fixture:
     )
 
 
-def parse_match_result(
-    item: Mapping[str, Any], *, goals: tuple[GoalEvent, ...] = ()
-) -> MatchResult:
-    """Map one ``/fixtures`` item to a :class:`MatchResult` (90' = ``score.fulltime``).
-
-    ``goals`` (the timeline from ``/fixtures/events``) is supplied separately by the caller.
-    """
+def parse_match_result(item: Mapping[str, Any]) -> MatchResult:
+    """Map one ``/fixtures`` item to a :class:`MatchResult` (90' = ``score.fulltime``)."""
     fixture = item["fixture"]
     teams = item["teams"]
     fulltime = item["score"].get("fulltime") or {}
@@ -130,38 +120,8 @@ def parse_match_result(
         stage=parse_stage(str(item["league"]["round"])),
         home_goals_90=_opt_int(fulltime.get("home")),
         away_goals_90=_opt_int(fulltime.get("away")),
-        goals=goals,
         advancing_team_id=advancing,
     )
-
-
-def parse_goal_events(events: Sequence[Mapping[str, Any]]) -> tuple[GoalEvent, ...]:
-    """Map ``/fixtures/events`` items to ordered goal events (keeps actual goals only).
-
-    Cards/subs and "Missed Penalty" are dropped. Own goals and extra-time goals are **kept** with
-    their flags/minutes; the domain layer applies the first-scorer rule (non-own-goal, minute<=90).
-    """
-    goals: list[GoalEvent] = []
-    for event in events:
-        if event.get("type") != "Goal":
-            continue
-        detail = event.get("detail")
-        if detail not in _GOAL_DETAILS:
-            continue
-        time = event.get("time") or {}
-        team = event.get("team") or {}
-        player = event.get("player") or {}
-        goals.append(
-            GoalEvent(
-                minute=int(time.get("elapsed") or 0),
-                team_id=int(team["id"]),
-                player_id=_opt_int(player.get("id")),
-                player_name=_opt_str(player.get("name")),
-                is_own_goal=detail == "Own Goal",
-                is_penalty=detail == "Penalty",
-            )
-        )
-    return tuple(goals)
 
 
 def parse_squad_players(response: Sequence[Mapping[str, Any]]) -> list[SquadPlayer]:
@@ -319,9 +279,7 @@ class ApiFootballProvider:
         fixtures = await self._get("/fixtures", {"id": fixture_id})
         if not fixtures:
             raise LookupError(f"API-Football has no fixture {fixture_id}")
-        events = await self._get("/fixtures/events", {"fixture": fixture_id})
-        goals = parse_goal_events(events)
-        return parse_match_result(fixtures[0], goals=goals)
+        return parse_match_result(fixtures[0])
 
     async def get_squad(self, team_id: int) -> list[SquadPlayer]:
         response = await self._get("/players/squads", {"team": team_id})

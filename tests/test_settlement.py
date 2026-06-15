@@ -22,32 +22,20 @@ from tigrinho.domain.settlement import (
     match_facts_from_result,
     settle_game,
 )
-from tigrinho.providers.base import GameStatus, GoalEvent, MatchResult, Stage
+from tigrinho.providers.base import GameStatus, MatchResult, Stage
 
 HOME_TEAM = 10
 AWAY_TEAM = 20
 
 
-def _goal(minute: int, team_id: int, player_id: int) -> GoalEvent:
-    return GoalEvent(
-        minute=minute,
-        team_id=team_id,
-        player_id=player_id,
-        player_name=None,
-        is_own_goal=False,
-        is_penalty=False,
-    )
-
-
 def _facts() -> MatchFacts:
-    # 2-1 group game; first scorer is player 7 (home, 10'), then player 8 (away, 60').
+    # 2-1 group game.
     return MatchFacts(
         stage=Stage.GROUP,
         home_team_id=HOME_TEAM,
         away_team_id=AWAY_TEAM,
         home_goals_90=2,
         away_goals_90=1,
-        goals=(_goal(10, HOME_TEAM, 7), _goal(60, AWAY_TEAM, 8)),
         advancing_team_id=None,
     )
 
@@ -104,14 +92,12 @@ def test_match_facts_from_result() -> None:
         stage=Stage.KNOCKOUT,
         home_goals_90=1,
         away_goals_90=1,
-        goals=(_goal(10, HOME_TEAM, 7),),
         advancing_team_id=AWAY_TEAM,
     )
     facts = match_facts_from_result(result, home_team_id=HOME_TEAM, away_team_id=AWAY_TEAM)
     assert facts.stage is Stage.KNOCKOUT
     assert facts.home_goals_90 == 1
     assert facts.advancing_team_id == AWAY_TEAM
-    assert facts.goals == result.goals
 
 
 def test_match_facts_from_result_requires_scores() -> None:
@@ -121,7 +107,6 @@ def test_match_facts_from_result_requires_scores() -> None:
         stage=Stage.GROUP,
         home_goals_90=None,
         away_goals_90=None,
-        goals=(),
         advancing_team_id=None,
     )
     with pytest.raises(ValueError, match="90"):

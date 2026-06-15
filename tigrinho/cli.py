@@ -33,7 +33,7 @@ from tigrinho.db.repositories import (
     PlayerRepository,
     SquadRepository,
 )
-from tigrinho.providers.base import FootballProvider, GameStatus, GoalEvent, MatchResult, Stage
+from tigrinho.providers.base import FootballProvider, GameStatus, MatchResult, Stage
 
 app = typer.Typer(help="TigrinhoDaCopa — CLI administrativa.", no_args_is_help=True)
 games_app = typer.Typer(help="CRUD de jogos.", no_args_is_help=True)
@@ -151,7 +151,6 @@ def result_set(
     fixture_id: int = typer.Argument(..., help="ID do jogo (fixture_id)."),
     home: int = typer.Argument(..., help="Gols do mandante nos 90'."),
     away: int = typer.Argument(..., help="Gols do visitante nos 90'."),
-    scorer: int | None = typer.Option(None, "--scorer", help="player_id do 1º a marcar."),
     advancing: int | None = typer.Option(
         None, "--advancing", help="team_id que avança (mata-mata)."
     ),
@@ -162,25 +161,12 @@ def result_set(
         if game is None:
             typer.echo(f"Jogo {fixture_id} não encontrado.")
             raise typer.Exit(code=1)
-        goals: tuple[GoalEvent, ...] = ()
-        if scorer is not None:
-            goals = (
-                GoalEvent(
-                    minute=1,
-                    team_id=game.home_team_id,
-                    player_id=scorer,
-                    player_name=None,
-                    is_own_goal=False,
-                    is_penalty=False,
-                ),
-            )
         result = MatchResult(
             fixture_id=fixture_id,
             status=GameStatus.FINISHED,
             stage=Stage(game.stage),
             home_goals_90=home,
             away_goals_90=away,
-            goals=goals,
             advancing_team_id=advancing,
         )
         settled = apply_settlement(session, result, now=_utcnow())

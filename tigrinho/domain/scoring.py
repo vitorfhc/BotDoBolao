@@ -1,8 +1,8 @@
 """Pure bet grading and the centralized points table (COMPLETION.md §8.1).
 
-All grading is a pure function of :class:`MatchFacts` (the 90' result + goal timeline + advancing
-team) — no I/O, no clock, no DB — so it is exhaustively unit-testable and deterministic. Settlement
-builds :class:`MatchFacts` from the stored game and the provider's :class:`MatchResult`.
+All grading is a pure function of :class:`MatchFacts` (the 90' result + advancing team) — no I/O,
+no clock, no DB — so it is exhaustively unit-testable and deterministic. Settlement builds
+:class:`MatchFacts` from the stored game and the provider's :class:`MatchResult`.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import assert_never
 
-from tigrinho.providers.base import GoalEvent, Stage
+from tigrinho.providers.base import Stage
 
 from .bets import (
     BetCategory,
@@ -42,16 +42,7 @@ class MatchFacts:
     away_team_id: int
     home_goals_90: int
     away_goals_90: int
-    goals: tuple[GoalEvent, ...]
     advancing_team_id: int | None
-
-
-def first_genuine_scorer(goals: tuple[GoalEvent, ...]) -> int | None:
-    """Player id of the earliest non-own-goal scorer within 90' (``None`` if there is none)."""
-    for goal in sorted(goals, key=lambda g: g.minute):
-        if not goal.is_own_goal and goal.minute <= 90:
-            return goal.player_id
-    return None
 
 
 def _btts_pattern(facts: MatchFacts) -> BttsSelection:

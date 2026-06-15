@@ -67,7 +67,7 @@ def _seed(factory: Callable[[], Session]) -> None:
 
 def test_result_set_grades_and_updates(open_session: Callable[[], Session]) -> None:
     _seed(open_session)
-    result = runner.invoke(app, ["result", "set", "1", "2", "1", "--scorer", "7"])
+    result = runner.invoke(app, ["result", "set", "1", "2", "1"])
     assert result.exit_code == 0
     assert "2x1" in result.output
 

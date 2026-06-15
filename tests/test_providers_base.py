@@ -11,7 +11,6 @@ from tigrinho.providers.base import (
     Fixture,
     FootballProvider,
     GameStatus,
-    GoalEvent,
     MatchResult,
     SquadPlayer,
     Stage,
@@ -34,21 +33,12 @@ def test_enums_have_expected_values() -> None:
 
 
 def test_value_objects_construct_with_expected_fields() -> None:
-    goal = GoalEvent(
-        minute=23,
-        team_id=10,
-        player_id=7,
-        player_name="Neymar",
-        is_own_goal=False,
-        is_penalty=False,
-    )
     result = MatchResult(
         fixture_id=1,
         status=GameStatus.FINISHED,
         stage=Stage.GROUP,
         home_goals_90=2,
         away_goals_90=1,
-        goals=(goal,),
         advancing_team_id=None,
     )
     fixture = Fixture(
@@ -63,7 +53,6 @@ def test_value_objects_construct_with_expected_fields() -> None:
     )
     squad = SquadPlayer(player_id=7, team_id=10, name="Neymar", position="FW")
 
-    assert result.goals[0].player_name == "Neymar"
     assert result.home_goals_90 == 2
     assert fixture.home_team_name == "Brasil"
     assert squad.position == "FW"
@@ -94,20 +83,17 @@ def test_value_objects_support_equality() -> None:
 
 
 def test_optional_fields_accept_none() -> None:
-    own_goal = GoalEvent(
-        minute=40, team_id=20, player_id=None, player_name=None, is_own_goal=True, is_penalty=False
-    )
+    # an unplayed/unknown fixture: scores and advancing team are all None
     result = MatchResult(
         fixture_id=2,
-        status=GameStatus.FINISHED,
+        status=GameStatus.SCHEDULED,
         stage=Stage.KNOCKOUT,
-        home_goals_90=0,
-        away_goals_90=0,
-        goals=(own_goal,),
-        advancing_team_id=10,
+        home_goals_90=None,
+        away_goals_90=None,
+        advancing_team_id=None,
     )
-    assert result.goals[0].player_id is None
-    assert result.advancing_team_id == 10
+    assert result.home_goals_90 is None
+    assert result.advancing_team_id is None
 
 
 class _ConformingProvider:
