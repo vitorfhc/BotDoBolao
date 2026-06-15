@@ -17,10 +17,9 @@ from typing import Any, assert_never
 
 
 class BetCategory(StrEnum):
-    """The five bet categories (COMPLETION.md §8.1)."""
+    """The four bet categories (COMPLETION.md §8.1)."""
 
     EXACT_SCORE = "EXACT_SCORE"
-    FIRST_SCORER = "FIRST_SCORER"
     BTTS = "BTTS"
     WINNER = "WINNER"
     OVER_UNDER = "OVER_UNDER"
@@ -51,11 +50,6 @@ class ExactScorePayload:
 
 
 @dataclass(frozen=True, slots=True)
-class FirstScorerPayload:
-    player_id: int
-
-
-@dataclass(frozen=True, slots=True)
 class BttsPayload:
     sel: BttsSelection
 
@@ -70,7 +64,7 @@ class OverUnderPayload:
     sel: OverUnderSelection
 
 
-BetPayload = ExactScorePayload | FirstScorerPayload | BttsPayload | WinnerPayload | OverUnderPayload
+BetPayload = ExactScorePayload | BttsPayload | WinnerPayload | OverUnderPayload
 
 
 class InvalidBetPayload(ValueError):
@@ -106,8 +100,6 @@ def parse_payload(category: BetCategory, data: Mapping[str, Any]) -> BetPayload:
                 home=_require_int(data, "home", minimum=0),
                 away=_require_int(data, "away", minimum=0),
             )
-        case BetCategory.FIRST_SCORER:
-            return FirstScorerPayload(player_id=_require_int(data, "player_id", minimum=1))
         case BetCategory.BTTS:
             return BttsPayload(sel=_require_enum(data, "sel", BttsSelection))
         case BetCategory.WINNER:
@@ -123,8 +115,6 @@ def payload_to_dict(payload: BetPayload) -> dict[str, Any]:
     match payload:
         case ExactScorePayload(home=home, away=away):
             return {"home": home, "away": away}
-        case FirstScorerPayload(player_id=player_id):
-            return {"player_id": player_id}
         case BttsPayload(sel=sel):
             return {"sel": sel.value}
         case WinnerPayload(sel=sel):

@@ -57,8 +57,9 @@ def test_tiebreak_exact_hits_beats_correct_count() -> None:
     # both 5 pts; P1 has an exact-score hit, P2 has more correct bets but no exact hit
     rows = [
         _row(1, points=5, correct=True, category=BetCategory.EXACT_SCORE),
-        _row(2, points=4, correct=True, category=BetCategory.FIRST_SCORER),
-        _row(2, points=1, correct=True, category=BetCategory.OVER_UNDER),
+        _row(2, points=2, correct=True, category=BetCategory.BTTS),
+        _row(2, points=2, correct=True, category=BetCategory.WINNER),
+        _row(2, points=1, correct=True, category=BetCategory.OVER_UNDER),  # 5 pts, 3 correct
     ]
     standings = _geral(rows)
     assert [s.player_discord_id for s in standings] == [1, 2]  # exact-hit tiebreak wins
@@ -66,11 +67,11 @@ def test_tiebreak_exact_hits_beats_correct_count() -> None:
 
 def test_tiebreak_correct_bets() -> None:
     rows = [
-        _row(1, points=4, correct=True, category=BetCategory.FIRST_SCORER),
-        _row(1, points=1, correct=True, category=BetCategory.OVER_UNDER),  # 5 pts, 2 correct
+        _row(1, points=2, correct=True, category=BetCategory.BTTS),
+        _row(1, points=2, correct=True, category=BetCategory.WINNER),  # 4 pts, 2 correct
         _row(2, points=2, correct=True, category=BetCategory.WINNER),
-        _row(2, points=2, correct=True, category=BetCategory.BTTS),
-        _row(2, points=1, correct=True, category=BetCategory.OVER_UNDER),  # 5 pts, 3 correct
+        _row(2, points=1, correct=True, category=BetCategory.OVER_UNDER),
+        _row(2, points=1, correct=True, category=BetCategory.OVER_UNDER),  # 4 pts, 3 correct
     ]
     standings = _geral(rows)
     assert [s.player_discord_id for s in standings] == [2, 1]  # more correct bets first

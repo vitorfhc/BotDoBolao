@@ -15,7 +15,6 @@ from .bets import (
     BttsPayload,
     BttsSelection,
     ExactScorePayload,
-    FirstScorerPayload,
     OverUnderPayload,
     OverUnderSelection,
     WinnerPayload,
@@ -67,7 +66,6 @@ def btts_label(
 def render_payload(
     payload: BetPayload,
     *,
-    scorer_name: str | None = None,
     home_name: str | None = None,
     away_name: str | None = None,
 ) -> str:
@@ -79,8 +77,6 @@ def render_payload(
     match payload:
         case ExactScorePayload(home=home, away=away):
             return f"{home}x{away}"
-        case FirstScorerPayload(player_id=player_id):
-            return scorer_name if scorer_name is not None else f"#{player_id}"
         case BttsPayload(sel=sel):
             return btts_label(sel, home_name=home_name, away_name=away_name)
         case WinnerPayload(sel=sel):
@@ -93,7 +89,6 @@ def render_payload(
 
 CATEGORY_LABELS_PT: dict[BetCategory, str] = {
     BetCategory.EXACT_SCORE: "Placar exato",
-    BetCategory.FIRST_SCORER: "Primeiro a marcar",
     BetCategory.BTTS: "Ambos marcam",
     BetCategory.WINNER: "Vencedor",
     BetCategory.OVER_UNDER: "Mais/Menos 2.5 gols",
@@ -101,7 +96,6 @@ CATEGORY_LABELS_PT: dict[BetCategory, str] = {
 
 _CATEGORY_EXAMPLES_PT: dict[BetCategory, str] = {
     BetCategory.EXACT_SCORE: "ex.: Brasil 2x1",
-    BetCategory.FIRST_SCORER: "quem faz o 1º gol até os 90' (gol contra não conta)",
     BetCategory.BTTS: "ambos marcam? (ambos / só mandante / só visitante / nenhum)",
     BetCategory.OVER_UNDER: "total de gols: mais de 2.5 (3+) ou menos de 2.5 (até 2)",
     BetCategory.WINNER: "quem vence (mandante / empate / visitante)",
@@ -110,7 +104,6 @@ _CATEGORY_EXAMPLES_PT: dict[BetCategory, str] = {
 # Display order: highest points first (matches the COMPLETION.md §8.1 table).
 _CATEGORY_ORDER: tuple[BetCategory, ...] = (
     BetCategory.EXACT_SCORE,
-    BetCategory.FIRST_SCORER,
     BetCategory.BTTS,
     BetCategory.WINNER,
     BetCategory.OVER_UNDER,
@@ -154,12 +147,10 @@ def help_text() -> str:
     lines += [
         "",
         "**⚖️ Regras**",
-        "• Os palpites de placar (placar exato, ambos marcam, mais/menos, primeiro a marcar) "
+        "• Os palpites de placar (placar exato, ambos marcam, mais/menos) "
         "valem pelo resultado dos **90 minutos** (sem prorrogação nem pênaltis).",
         "• **Mata-mata:** o Vencedor é quem **avança** — não existe empate, e o palpite de empate "
         "sempre perde. (Na fase de grupos, o empate vale normalmente.)",
-        "• Gol contra **não** conta como “primeiro a marcar”. Se o jogo termina 0x0 (ou só com gol "
-        "contra) nos 90', todos os palpites de primeiro a marcar perdem.",
         "• Um palpite por categoria em cada jogo; dá para editar até o apito inicial.",
         "",
         "**🔔 Avisos (cargo @Tigrinhos)**",

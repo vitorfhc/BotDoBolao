@@ -6,7 +6,6 @@ from tigrinho.domain.bets import (
     BttsPayload,
     BttsSelection,
     ExactScorePayload,
-    FirstScorerPayload,
     OverUnderPayload,
     OverUnderSelection,
     WinnerPayload,
@@ -28,11 +27,6 @@ def test_labels_cover_all_selections() -> None:
 
 def test_render_exact_score() -> None:
     assert render_payload(ExactScorePayload(2, 1)) == "2x1"
-
-
-def test_render_first_scorer_with_and_without_name() -> None:
-    assert render_payload(FirstScorerPayload(7), scorer_name="Neymar") == "Neymar"
-    assert render_payload(FirstScorerPayload(7)) == "#7"
 
 
 def test_render_btts() -> None:

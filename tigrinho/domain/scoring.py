@@ -18,7 +18,6 @@ from .bets import (
     BttsPayload,
     BttsSelection,
     ExactScorePayload,
-    FirstScorerPayload,
     OverUnderPayload,
     OverUnderSelection,
     WinnerPayload,
@@ -28,7 +27,6 @@ from .bets import (
 # Single source of truth for per-category points (COMPLETION.md §8.1). Tune here only.
 POINTS: dict[BetCategory, int] = {
     BetCategory.EXACT_SCORE: 5,
-    BetCategory.FIRST_SCORER: 4,
     BetCategory.BTTS: 2,
     BetCategory.WINNER: 2,
     BetCategory.OVER_UNDER: 1,
@@ -92,9 +90,6 @@ def is_winning_bet(payload: BetPayload, facts: MatchFacts) -> bool:
     match payload:
         case ExactScorePayload(home=home, away=away):
             return facts.home_goals_90 == home and facts.away_goals_90 == away
-        case FirstScorerPayload(player_id=player_id):
-            scorer = first_genuine_scorer(facts.goals)
-            return scorer is not None and scorer == player_id
         case BttsPayload(sel=sel):
             return _btts_pattern(facts) is sel
         case WinnerPayload(sel=sel):

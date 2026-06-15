@@ -9,7 +9,6 @@ from tigrinho.domain.bets import (
     BttsPayload,
     BttsSelection,
     ExactScorePayload,
-    FirstScorerPayload,
     OverUnderPayload,
     OverUnderSelection,
     WinnerPayload,
@@ -57,8 +56,6 @@ def _mixed_bets() -> list[BetInput]:
     return [
         BetInput(1, BetCategory.EXACT_SCORE, dump_payload(ExactScorePayload(2, 1))),
         BetInput(2, BetCategory.EXACT_SCORE, dump_payload(ExactScorePayload(1, 1))),
-        BetInput(3, BetCategory.FIRST_SCORER, dump_payload(FirstScorerPayload(7))),
-        BetInput(4, BetCategory.FIRST_SCORER, dump_payload(FirstScorerPayload(8))),
         BetInput(5, BetCategory.BTTS, dump_payload(BttsPayload(BttsSelection.BOTH))),
         BetInput(6, BetCategory.WINNER, dump_payload(WinnerPayload(WinnerSelection.HOME))),
         BetInput(7, BetCategory.WINNER, dump_payload(WinnerPayload(WinnerSelection.DRAW))),
@@ -77,8 +74,6 @@ def test_settle_game_grades_every_bet() -> None:
     assert by_id == {
         1: (True, 5),  # exact 2-1
         2: (False, 0),  # exact 1-1
-        3: (True, 4),  # first scorer 7
-        4: (False, 0),  # first scorer 8
         5: (True, 2),  # BTTS both
         6: (True, 2),  # winner home
         7: (False, 0),  # winner draw

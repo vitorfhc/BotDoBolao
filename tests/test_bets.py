@@ -10,7 +10,6 @@ from tigrinho.domain.bets import (
     BttsPayload,
     BttsSelection,
     ExactScorePayload,
-    FirstScorerPayload,
     InvalidBetPayload,
     OverUnderPayload,
     OverUnderSelection,
@@ -26,7 +25,6 @@ from tigrinho.domain.bets import (
 def test_category_and_selection_enum_values() -> None:
     assert {c.value for c in BetCategory} == {
         "EXACT_SCORE",
-        "FIRST_SCORER",
         "BTTS",
         "WINNER",
         "OVER_UNDER",
@@ -60,16 +58,6 @@ def test_parse_exact_score_invalid(data: dict[str, object]) -> None:
         parse_payload(BetCategory.EXACT_SCORE, data)
 
 
-def test_parse_first_scorer() -> None:
-    assert parse_payload(BetCategory.FIRST_SCORER, {"player_id": 7}) == FirstScorerPayload(7)
-
-
-@pytest.mark.parametrize("data", [{}, {"player_id": 0}, {"player_id": -3}, {"player_id": "x"}])
-def test_parse_first_scorer_invalid(data: dict[str, object]) -> None:
-    with pytest.raises(InvalidBetPayload):
-        parse_payload(BetCategory.FIRST_SCORER, data)
-
-
 def test_parse_btts_winner_over_under() -> None:
     assert parse_payload(BetCategory.BTTS, {"sel": "BOTH"}) == BttsPayload(BttsSelection.BOTH)
     assert parse_payload(BetCategory.WINNER, {"sel": "DRAW"}) == WinnerPayload(WinnerSelection.DRAW)
@@ -95,7 +83,6 @@ def test_parse_selection_invalid(category: BetCategory, data: dict[str, object])
 def test_payload_to_dict_round_trips() -> None:
     cases: list[tuple[BetCategory, BetPayload]] = [
         (BetCategory.EXACT_SCORE, ExactScorePayload(3, 2)),
-        (BetCategory.FIRST_SCORER, FirstScorerPayload(99)),
         (BetCategory.BTTS, BttsPayload(BttsSelection.NEITHER)),
         (BetCategory.WINNER, WinnerPayload(WinnerSelection.AWAY)),
         (BetCategory.OVER_UNDER, OverUnderPayload(OverUnderSelection.UNDER)),
