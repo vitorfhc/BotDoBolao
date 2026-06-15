@@ -168,6 +168,22 @@ def test_parse_match_result_live_score_present_while_fulltime_null() -> None:
     assert result.away_goals == 0
 
 
+def test_parse_match_result_absent_goals_key_yields_none() -> None:
+    # No top-level `goals` object at all (e.g. a not-started fixture) -> live score is None.
+    item: dict[str, Any] = {
+        "fixture": {"id": 3, "date": "2026-06-15T16:00:00-03:00", "status": {"short": "NS"}},
+        "league": {"round": "Group A - 1"},
+        "teams": {
+            "home": {"id": 10, "name": "Brasil"},
+            "away": {"id": 20, "name": "Argentina"},
+        },
+        "score": {},
+    }
+    result = parse_match_result(item)
+    assert result.home_goals is None
+    assert result.away_goals is None
+
+
 _EVENTS: list[dict[str, Any]] = [
     {
         "time": {"elapsed": 10, "extra": None},

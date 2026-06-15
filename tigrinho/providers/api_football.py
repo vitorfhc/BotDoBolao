@@ -7,7 +7,8 @@ I/O, so they are exhaustively unit-testable with recorded JSON. The httpx-backed
 Field paths, status codes, and endpoints verified against the live API-Football v3 docs (2026-06):
 - Base ``https://v3.football.api-sports.io``; auth header ``x-apisports-key``.
 - ``GET /fixtures`` -> ``response[].{fixture.{id,date,status.short}, league.round,
-  teams.{home,away}.{id,name,winner}, score.{fulltime,extratime,penalty}.{home,away}}``.
+  teams.{home,away}.{id,name,winner}, goals.{home,away},
+  score.{fulltime,extratime,penalty}.{home,away}}``.
 - ``GET /fixtures/events`` -> ``response[].{time.{elapsed,extra}, team.id, player.{id,name},
   type, detail}``.
 - ``GET /players/squads`` -> ``response[].{team.id, players[].{id,name,position}}``.
