@@ -1,0 +1,14 @@
+# TigrinhoDaCopa — Docker Compose deployment (COMPLETION.md §15).
+services:
+  bot:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    environment:
+      CONFIG_PATH: /app/config.yaml
+    volumes:
+      - tigrinho-data:/data            # persists the SQLite DB (db_path: /data/tigrinho.db)
+      - ./config.yaml:/app/config.yaml:ro  # non-secret settings (read-only)
+
+volumes:
+  tigrinho-data:

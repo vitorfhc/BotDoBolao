@@ -124,8 +124,10 @@ operating rules are in `RALPH.md`.
     `_register_cogs` wires Help/Subscribe/Bets/Board/Sync/Poll; `tigrinho/__main__.py` (`python -m tigrinho`); 2 tests.
   - [x] `.env.example` (2 secrets) + `config.example.yaml` (every §4 key); test loads the example via
     `load_settings`; both confirmed committable (not gitignored).
-  - [ ] Dockerfile (python:3.12-slim, non-root, uv) + entrypoint (`alembic upgrade head` then run) +
-    docker-compose.yml (env_file, /data volume, config bind-mount, CONFIG_PATH); `docker compose config` validates.
+  - [x] `Dockerfile` (python:3.12-slim, uv, non-root appuser, venv on PATH) + `docker/entrypoint.sh`
+    (`alembic upgrade head` → `python -m tigrinho`) + `docker-compose.yml` (bot service, env_file,
+    `tigrinho-data:/data` volume, `config.yaml:ro` bind-mount, `CONFIG_PATH`). **`docker compose config`
+    validates.** 3 structure tests; dev dep `types-PyYAML`.
   - [ ] `CLAUDE.md` (grounding rule, secrets/settings split, /ajuda-in-sync maintenance rule).
   - [ ] `README.md` — full deploy guide (§15.1, 14 sections).
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
@@ -296,9 +298,12 @@ operating rules are in `RALPH.md`.
   `_register_cogs` (all 6 cogs) + `tigrinho/__main__.py`. 2 tests (all cogs/commands registered offline;
   create_bot builds runtime). Cog `tasks.loop`s cancelled via `remove_cog` in tests.
 - **Iter 41 (M10 examples):** `.env.example` + `config.example.yaml` (§4); test loads example.
-- **Next:** M10 (c) — **Dockerfile** (`python:3.12-slim`, non-root user, install deps via uv [`uv sync
-  --no-dev` or pip from pyproject]), **docker/entrypoint** (`alembic upgrade head` then `python -m
-  tigrinho`), **docker-compose.yml** (one `bot` service, `env_file: .env`, `restart: unless-stopped`,
-  named volume → `/data`, `config.yaml` bind-mount read-only, `CONFIG_PATH=/app/config.yaml`). Verify
-  with `docker compose config` (validates compose YAML without building). Don't build/run the image
-  (no Docker daemon assumed) — just author + `docker compose config`. Then (d) CLAUDE.md, (e) README §15.1.
+- **Iter 42 (M10 Docker/compose):** Dockerfile + entrypoint + docker-compose.yml; `docker compose
+  config` validates. 3 tests; dep `types-PyYAML`.
+- **Next:** M10 (d) — **`CLAUDE.md`** (project memory for future agents). MUST encode (§11, §2):
+  the grounding rule (web-search official docs before using/changing any external API); the
+  secrets-in-`.env` / settings-in-`config.yaml` split; and the maintenance rule that any change to
+  commands/categories/scoring/grading MUST update `/ajuda` text (domain/text_pt) AND COMPLETION.md
+  together. Also: the gates command (`uv run ruff/mypy/pytest`), TDD, `provider_mode: fake` for dev/tests,
+  module map, run via `python -m tigrinho` / CLI via `python -m tigrinho.cli`. No test (doc). Then (e)
+  README §15.1 (the big one) → M10 done → M11 hardening (end-to-end fake smoke test, coverage, edge cases).
