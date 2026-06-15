@@ -42,17 +42,24 @@ class _StubChannel(discord.abc.Messageable):
         self._sink.append((content, allowed_mentions))
 
 
-def _add_game(factory: object, *, kickoff: datetime) -> None:
+def _add_game(
+    factory: object,
+    *,
+    kickoff: datetime,
+    fixture_id: int = 1,
+    home_team_name: str = "Brasil",
+    away_team_name: str = "Argentina",
+) -> None:
     with factory() as session:  # type: ignore[operator]
         session.add(
             Game(
-                fixture_id=1,
-                match_hash="h1",
+                fixture_id=fixture_id,
+                match_hash=f"h{fixture_id}",
                 stage="GROUP",
                 home_team_id=10,
-                home_team_name="Brasil",
+                home_team_name=home_team_name,
                 away_team_id=20,
-                away_team_name="Argentina",
+                away_team_name=away_team_name,
                 kickoff_utc=kickoff,
                 kickoff_local=kickoff,
                 status="SCHEDULED",
@@ -152,3 +159,34 @@ async def test_run_reminders_skips_game_not_yet_in_window(tmp_path: Path) -> Non
         await bot.close()
 
     assert sent == []
+
+
+async def test_run_reminders_combines_due_games_into_one_pinged_message(tmp_path: Path) -> None:
+    engine = create_db_engine(str(tmp_path / "t.db"))
+    Base.metadata.create_all(engine)
+    factory = create_session_factory(engine)
+    # Two games both inside the 60-min lead window (e.g. simultaneous group-stage kickoffs).
+    _add_game(factory, fixture_id=1, kickoff=NOW + timedelta(minutes=20))
+    _add_game(
+        factory,
+        fixture_id=2,
+        home_team_name="França",
+        away_team_name="Alemanha",
+        kickoff=NOW + timedelta(minutes=30),
+    )
+
+    sent: list[tuple[str, discord.AllowedMentions]] = []
+    bot = TigrinhoBot(_settings())
+    try:
+        cog = ReminderCog(bot, settings=_settings(), session_factory=factory, clock=lambda: NOW)
+        bot.get_channel = lambda _id: _StubChannel(sent)  # type: ignore[method-assign,assignment,return-value]
+        await cog.run_reminders()
+    finally:
+        await bot.close()
+
+    assert len(sent) == 1  # one combined message for both games
+    content, am = sent[0]
+    assert content.count("<@&333>") == 1  # one ping for the whole batch
+    assert "Brasil x Argentina" in content
+    assert "França x Alemanha" in content
+    assert am.roles is True
