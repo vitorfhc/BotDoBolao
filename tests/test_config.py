@@ -7,8 +7,9 @@ from datetime import time
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from tigrinho.config import ConfigError, LogFormat, ProviderMode, load_settings
+from tigrinho.config import ConfigError, LogFormat, ProviderMode, Settings, load_settings
 
 # Every env var that maps to a Settings field — cleared so the host environment
 # cannot leak into tests (env vars override YAML by design).
@@ -224,3 +225,28 @@ def test_helpers_timezone_and_sync_time(base_env: Path) -> None:
     assert s.sync_time_of_day == time(6, 30)
     assert s.tzinfo.key == "America/Sao_Paulo"
     assert s.budget_reset_tzinfo.key == "UTC"
+
+
+def test_reminder_lead_minutes_default_is_60() -> None:
+    settings = Settings(
+        discord_token="tok",
+        api_football_key="key",
+        guild_id=1,
+        announce_channel_id=2,
+        tigrinhos_role_id=3,
+        admin_user_id=4,
+    )
+    assert settings.reminder_lead_minutes == 60
+
+
+def test_reminder_lead_minutes_must_be_positive() -> None:
+    with pytest.raises(ValidationError):  # gt=0 constraint
+        Settings(
+            discord_token="tok",
+            api_football_key="key",
+            guild_id=1,
+            announce_channel_id=2,
+            tigrinhos_role_id=3,
+            admin_user_id=4,
+            reminder_lead_minutes=0,
+        )

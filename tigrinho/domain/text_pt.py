@@ -158,5 +158,7 @@ def help_text() -> str:
         "O cargo **@Tigrinhos** serve só para receber as menções nos anúncios — **qualquer pessoa "
         "pode apostar**, com ou sem o cargo. Use **/inscrever** para receber os avisos e **/sair** "
         "para parar.",
+        "Pouco **antes** de cada jogo, o bot marca o **@Tigrinhos** lembrando que a bola vai rolar "
+        "e que é hora de apostar — as apostas fecham no apito inicial.",
     ]
     return "\n".join(lines)

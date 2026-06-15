@@ -91,3 +91,9 @@ def test_btts_label_uses_team_names_without_gendered_article() -> None:
 def test_btts_label_falls_back_to_generic_without_names() -> None:
     assert "mandante" in btts_label(BttsSelection.ONLY_HOME).lower()
     assert "visitante" in btts_label(BttsSelection.ONLY_AWAY).lower()
+
+
+def test_help_mentions_pre_game_reminder() -> None:
+    text = help_text().lower()
+    assert "lembr" in text  # e.g. "lembrando"/"lembrete"
+    assert "antes" in text  # before kickoff

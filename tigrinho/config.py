@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     wc_season: int = Field(default=2026, ge=2000, le=2100)
     timezone: str = "America/Sao_Paulo"
     sync_time: str = "06:00"
+    reminder_lead_minutes: int = Field(default=60, gt=0)
     poll_interval_minutes: int = Field(default=1, gt=0)
     match_window_hours: int = Field(default=3, gt=0)
     settle_grace_hours: int = Field(default=24, gt=0)

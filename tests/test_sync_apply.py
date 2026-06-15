@@ -112,3 +112,25 @@ def test_apply_void_missing_game_is_noop(session: Session) -> None:
     )
     assert counts.voided == 1  # counted, but no row to touch
     assert GameRepository(session).get(999) is None
+
+
+def test_reschedule_clears_reminder_sent_at(session: Session) -> None:
+    # Insert a game, then mark it as already reminded.
+    apply_plan(session, SyncPlan(new=[_fixture(1)], rescheduled=[], voided=[]), now=NOW, tz=SP)
+    game = GameRepository(session).get(1)
+    assert game is not None
+    game.reminder_sent_at = NOW
+    session.flush()
+
+    # Reschedule it -> reminder_sent_at must be cleared so it gets a fresh reminder.
+    later = KICK + timedelta(hours=2)
+    apply_plan(
+        session,
+        SyncPlan(new=[], rescheduled=[_fixture(1, kickoff=later)], voided=[]),
+        now=NOW,
+        tz=SP,
+    )
+    game = GameRepository(session).get(1)
+    assert game is not None
+    assert game.kickoff_utc == later
+    assert game.reminder_sent_at is None

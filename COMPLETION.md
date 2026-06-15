@@ -102,6 +102,7 @@ at startup; the bot MUST refuse to start if any required value is missing or mal
 | `wc_season` | no | `2026` | Season. |
 | `timezone` | no | `America/Sao_Paulo` | Drives sync time, displayed kickoffs, weekly reset. |
 | `sync_time` | no | `06:00` | Daily fixtures sync (local time). |
+| `reminder_lead_minutes` | no | `60` | Minutes before kickoff to ping `@Tigrinhos` with a "place your bets" reminder (§9.4). |
 | `poll_interval_minutes` | no | `1` | Live-poll cadence during match windows (one request per cycle covers all games). |
 | `match_window_hours` | no | `3` | Fast-poll window after kickoff; past it a game is "overdue" (rechecked slowly until the grace). |
 | `settle_grace_hours` | no | `24` | Keep auto-settling a game until this long after kickoff (covers extra time/penalties + API lag); must be ≥ `match_window_hours`. |
@@ -411,6 +412,27 @@ ping**):
    is match goals only).
 
 Both are restart-safe and idempotent (dedup state persists on the game row).
+
+### 9.4 Pre-game reminder (`reminder_lead_minutes`, default 60)
+
+A separate `tasks.loop(minutes=1)` (`ReminderCog`) — **DB-only, no provider call**. Each tick it
+selects open games (`list_open`) whose kickoff is within `reminder_lead_minutes` and that haven't
+been reminded (`games.reminder_sent_at is None`), and posts **one consolidated** pt-BR message to
+`announce_channel_id` **pinging `@Tigrinhos`** to place bets before the opening whistle.
+
+- **Window:** a game is due when `now` is in `[kickoff - reminder_lead_minutes, kickoff)`. The upper
+  bound means a reminder still **fires late** (e.g. after a restart) as long as bets are open, and
+  never fires once the game has kicked off.
+- **Channel-safe:** the channel is resolved **before** `reminder_sent_at` is committed; if it's
+  unavailable (cold cache after a restart) the tick returns without marking, so the next tick
+  retries (the reminder *is* the feature, unlike the cosmetic kickoff/goal messages). If the channel
+  resolves but `channel.send()` later raises, the dedup flag is already committed — the same accepted
+  commit-then-send tradeoff the other cogs carry.
+- **Reschedule:** `apply_plan` clears `reminder_sent_at` so a moved game is reminded again — subject
+  to the once-daily sync detection lag (a *sooner* reschedule landing inside the lead window before
+  the next sync won't be re-reminded; same lag as the §9.1 re-announcement).
+
+Restart-safe and idempotent (dedup state persists on the game row).
 
 ---
 
