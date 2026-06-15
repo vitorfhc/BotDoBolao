@@ -26,6 +26,7 @@ from tigrinho.domain.bets import (
 from tigrinho.domain.text_pt import render_payload
 from tigrinho.providers.base import Stage
 
+from .apostar_view import FlowContext, build_apostar_view, games_to_choices
 from .bets_view import MyBetLine, OpenGameLine, render_my_bets, render_open_games
 
 
@@ -115,6 +116,27 @@ class BetsCog(commands.Cog):
 
             lines = build_my_bet_lines(session, interaction.user.id, resolver)
         await interaction.response.send_message(render_my_bets(lines), ephemeral=True)
+
+    @app_commands.command(name="apostar", description="Fazer ou editar um palpite")
+    async def apostar(self, interaction: discord.Interaction) -> None:
+        now = self._clock()
+        with self.session_factory() as session:
+            choices = games_to_choices(GameRepository(session).list_open(now), self.settings.tzinfo)
+        if not choices:
+            await interaction.response.send_message(
+                "Nenhum jogo aberto para apostar agora. ⏳", ephemeral=True
+            )
+            return
+        ctx = FlowContext(
+            settings=self.settings,
+            session_factory=self.session_factory,
+            clock=self._clock,
+            user_id=interaction.user.id,
+            user_name=interaction.user.display_name,
+        )
+        await interaction.response.send_message(
+            "Escolha um jogo para apostar:", view=build_apostar_view(ctx, choices), ephemeral=True
+        )
 
     @app_commands.command(name="jogos", description="Ver os jogos abertos para apostar")
     async def jogos(self, interaction: discord.Interaction) -> None:

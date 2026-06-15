@@ -75,8 +75,10 @@ operating rules are in `RALPH.md`.
     `/jogos` (thin); 4 tests.
   - [x] `bot/apostar_view.py` (pure) — `winner_selection_options` (knockout hides DRAW, §8.1),
     `paginate` (25-option Select limit for squads), `game_choice_label`; 6 tests.
-  - [ ] `/apostar` component flow (ui.View/Select/Modal over parse_payload+place_bet) + delete control.
-    **Ground discord.py UI first.**
+  - [~] `/apostar` component flow — game Select → category Select → EXACT_SCORE Modal /
+    WINNER+BTTS+OVER_UNDER value Select → `parse_payload`+`place_bet`; wired into `BetsCog`; grounded
+    discord.py UI (`ui.Select[ui.View]`, `ui.Modal`+`ui.TextInput[Modal]`); 7 tests (builders + cmd).
+    Remaining: FIRST_SCORER (paginated squad Select) + `/minhas_apostas` delete control.
   - [x] `bot/subscribe_cog.py` — pure `decide_subscribe` (already/not subscribed → reply + perform?) +
     `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
     grounded vs discord.py role ops; 5 tests.
@@ -215,11 +217,13 @@ operating rules are in `RALPH.md`.
   so seed the player before bets.
 - **Iter 26 (M6 apostar pure helpers):** `winner_selection_options` (knockout hides DRAW),
   `paginate` (25-Select-option limit), `game_choice_label`. 6 tests. No discord import.
-- **Next:** M6 — the `/apostar` ui.View flow (the gateway glue). **Ground discord.py UI** (`ui.View`,
-  `ui.Select`+`SelectOption`, `ui.Modal`+`ui.TextInput`+`on_submit`, `Interaction.response.send_message(view=)`,
-  `interaction.response.edit_message`). Flow: `/apostar` → open-games Select → category Select →
-  EXACT_SCORE Modal / WINNER+BTTS+OVER_UNDER Select (use `winner_selection_options`) / FIRST_SCORER
-  paginated squad Select → `parse_payload` + `place_bet`; ephemeral, shows current bet. Construction-test
-  the View; logic already covered by apostar_view/bets_logic tests. Then M6 done → **M7 poll cog**
-  (active-window polling, auto-settlement via domain.settlement, results message, stuck-game alert) —
-  keep settlement-apply + results-message PURE/testable; ground `tasks.loop(seconds=)`.
+- **Iter 27 (M6 /apostar flow, 4 categories):** Verified the `ui.Select[ui.View]`/`ui.Modal`+
+  `ui.TextInput[Modal]` mypy-strict patterns via scratch, then built `apostar_view.py` flow (FlowContext,
+  GameChoice, games_to_choices, GameSelect→CategorySelect→ValueSelect/ScoreModal, `_finalize_bet`) +
+  wired `/apostar` into BetsCog. 7 tests (builders incl. knockout draw-hiding integration + cmd reg).
+- **Next:** M6 — finish `/apostar`: FIRST_SCORER paginated squad Select (use `paginate`; load both
+  teams' `SquadRepository` rosters; ◀/▶ buttons or single page; add FIRST_SCORER to APOSTAR_CATEGORIES)
+  + the delete control on `/minhas_apostas` (a Select of the caller's open bets → `delete_bet`). Then
+  **M6 done → M7 poll cog** (active-window polling, auto-settlement via domain.settlement, results
+  message, stuck-game alert) — keep the settlement-apply + results-message PURE/testable; ground
+  `tasks.loop(seconds=)`. Reuse `settle_game`/`match_facts_from_result` + `first_genuine_scorer`.
