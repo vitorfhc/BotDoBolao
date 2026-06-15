@@ -41,6 +41,12 @@ operating rules are in `RALPH.md`.
     scores), `settle_game` (grade every bet; pure → idempotent; malformed payload loses, no crash);
     7 tests (full mixed game, idempotency, empty, malformed-json-loses, facts builder).
 - [ ] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
+  - [x] `domain/text_pt.py` — pt-BR templates: `CATEGORY_LABELS_PT` + `help_text()` (pure) covering all
+    7 commands, categories+points (derived from `POINTS` → stays in sync), 90'/knockout rules, close-at-
+    kickoff, role-is-notifications-only, no-real-money; 6 tests; fits the 4096 embed limit.
+  - [ ] `bot/client.py` — discord.py client + `setup_hook` cog registration + guild-scoped command sync
+    + startup config validation (load_settings) + role/Manage-Roles fail-fast check. **Ground discord.py 2.x.**
+  - [ ] `bot/help_cog.py` — `/ajuda` slash command rendering `help_text()` (ephemeral or embed).
 - [ ] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
 - [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
 - [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
@@ -141,9 +147,14 @@ operating rules are in `RALPH.md`.
   `match_facts_from_result` builds `MatchFacts` (raises if 90' score missing → caller treats as stuck).
   Fixed `parse_payload_json` to wrap `json.JSONDecodeError`→`InvalidBetPayload` (malformed stored
   payload loses instead of crashing settlement). **M3 complete** (domain pure + exhaustively tested).
-- **Next:** M4 — Bot skeleton. **Ground discord.py 2.x first** (web search: `commands.Bot`/`Client`,
-  intents [no privileged needed], app-command tree + `guild` scoped sync in `setup_hook`/`on_ready`,
-  Cog + `@app_commands.command`, `Interaction.response`). Add `discord.py` dep. Build `bot/client.py`
-  (client + startup config validation via `load_settings` + role/permission fail-fast check) and
-  `bot/help_cog.py` (`/ajuda` pt-BR per §11). Test the pure pieces (e.g. help text builder, config
-  check) without a live gateway; keep gateway code thin.
+- **Iter 16 (M4 text_pt.py):** Built the pure pt-BR `/ajuda` text in `domain/text_pt.py`, derived from
+  `BetCategory`/`POINTS` so it auto-syncs with scoring (§11 maintenance rule). Tests assert §11
+  completeness (all commands, per-category points on one line, knockout/90'/close/role/no-money). No
+  discord.py surface touched → no grounding needed this slice.
+- **Next:** M4 — `bot/client.py` + `bot/help_cog.py`. **Ground discord.py 2.x first** (web search:
+  `commands.Bot(intents=...)`, `Intents.none()/default()` [no privileged needed], `setup_hook` →
+  `add_cog` + `tree.copy_global_to(guild=...)` + `tree.sync(guild=...)`, `commands.Cog` +
+  `@app_commands.command`, `Interaction.response.send_message(ephemeral=...)`, sending an `Embed`).
+  Add `discord.py` dep. client.py: validate config at startup (`load_settings`) and fail-fast warn if
+  the bot lacks Manage Roles / the Tigrinhos role is above it (check in `on_ready`). help_cog renders
+  `help_text()` as an ephemeral embed. Keep gateway code thin; unit-test any pure helpers.
