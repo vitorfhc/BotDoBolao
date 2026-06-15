@@ -6,11 +6,25 @@ holds that pure computation + the pt-BR rendering; the ``BoardCog`` (`/placar`) 
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, tzinfo
+from datetime import UTC, datetime, time, timedelta, tzinfo
 from enum import StrEnum
+from typing import Literal
 
+import discord
+from discord import app_commands
+from discord.ext import commands
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from tigrinho.config import Settings
+from tigrinho.db.models import Bet, Game, Player
 from tigrinho.domain.bets import BetCategory
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 class Period(StrEnum):
@@ -130,3 +144,59 @@ def render_placar(
             own_line = f"{own.rank}. <@{own.player_discord_id}> — {own.total_points} pt(s) (você)"
             lines.append(own_line)
     return "\n".join(lines)
+
+
+def build_standing_inputs(session: Session) -> list[StandingInput]:
+    """Load every settled bet (joined to its player + game) as a :class:`StandingInput` (§10)."""
+    stmt = (
+        select(Bet, Player, Game)
+        .join(Player, Bet.player_discord_id == Player.discord_id)
+        .join(Game, Bet.fixture_id == Game.fixture_id)
+        .where(Bet.settled_at.is_not(None))
+    )
+    inputs: list[StandingInput] = []
+    for bet, player, game in session.execute(stmt).tuples():
+        inputs.append(
+            StandingInput(
+                player_discord_id=bet.player_discord_id,
+                player_name=player.display_name,
+                player_created_at=player.created_at,
+                category=BetCategory(bet.category),
+                is_correct=bool(bet.is_correct),
+                points=bet.points_awarded or 0,
+                kickoff_utc=game.kickoff_utc,
+            )
+        )
+    return inputs
+
+
+class BoardCog(commands.Cog):
+    """The `/placar` scoreboard command."""
+
+    def __init__(
+        self,
+        bot: commands.Bot,
+        *,
+        settings: Settings,
+        session_factory: Callable[[], Session],
+        clock: Callable[[], datetime] = _utcnow,
+    ) -> None:
+        self.bot = bot
+        self.settings = settings
+        self.session_factory = session_factory
+        self._clock = clock
+
+    @app_commands.command(name="placar", description="Ver o ranking (geral ou da semana)")
+    @app_commands.describe(periodo="Período do ranking: geral (padrão) ou semana")
+    async def placar(
+        self, interaction: discord.Interaction, periodo: Literal["geral", "semana"] = "geral"
+    ) -> None:
+        period = Period(periodo)
+        now = self._clock()
+        with self.session_factory() as session:
+            rows = build_standing_inputs(session)
+        standings = compute_standings(rows, period=period, tz=self.settings.tzinfo, now=now)
+        # /placar is social — post publicly (not ephemeral).
+        await interaction.response.send_message(
+            render_placar(standings, period=period, caller_id=interaction.user.id)
+        )
