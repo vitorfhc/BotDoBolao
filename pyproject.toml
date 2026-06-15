@@ -3,7 +3,10 @@ name = "tigrinho-da-copa"
 version = "0.1.0"
 description = "Discord bot for friendly (no real money) FIFA World Cup 2026 bets."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic-settings[yaml]>=2.14.1",
+    "tzdata>=2026.2",
+]
 
 [dependency-groups]
 dev = [
@@ -32,7 +35,12 @@ python_version = "3.12"
 strict = true
 warn_unused_configs = true
 warn_redundant_casts = true
+plugins = ["pydantic.mypy"]
 exclude = ['^\.venv/']
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

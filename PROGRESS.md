@@ -7,7 +7,7 @@ operating rules are in `RALPH.md`.
 ## Milestones (do in order, one small step per iteration)
 - [ ] **M0 — Scaffold:** `pyproject.toml`, ruff/mypy/pytest config, package layout, `config.py` (`.env` + `config.yaml` loading), `logging.py`. Gates green on an empty app.
   - [x] Project scaffold: `pyproject.toml` (uv project), ruff + mypy(strict) + pytest config, package layout (`tigrinho/` + `db`/`providers`/`domain`/`bot` subpackages), `.gitignore`, smoke test — all 4 gates green.
-  - [ ] `config.py` (pydantic-settings: `.env` secrets + `config.yaml` via `YamlConfigSettingsSource`) — needs grounding.
+  - [x] `config.py` — `Settings` (pydantic-settings 2.14.1): `.env` secrets + `config.yaml` via `YamlConfigSettingsSource`; env-over-yaml; `CONFIG_PATH`; fail-fast `ConfigError`; 12 tests.
   - [ ] `logging.py` (structlog setup).
 - [ ] **M1 — Data layer:** ORM models, Alembic initial migration, repositories + tests.
 - [ ] **M2 — Provider:** value objects + `FootballProvider` Protocol, `FakeProvider`, `ApiFootballProvider`, `RequestBudget` (hard-stop at cap) + tests.
@@ -29,5 +29,15 @@ operating rules are in `RALPH.md`.
   Runtime deps will be added per-milestone (after grounding each library) rather than all up-front.
   `config.yaml` is gitignored alongside `.env` (IDs treated as private per §4); `*.example` files
   committed at M10. mypy `exclude` set for `.venv`. `uv.lock` committed for reproducibility.
-- **Next:** finish M0 — add `config.py`. Must web-search current `pydantic-settings` docs first
-  (the `YamlConfigSettingsSource` + `settings_customise_sources` API) before coding it.
+- **Iter 2 (M0 `config.py`):** Grounded pydantic-settings 2.14.1 via web + introspection.
+  `settings_customise_sources` returns sources highest-priority-first; ordering used is
+  `init > env > .env > config.yaml(YamlConfigSettingsSource) > file_secrets` → env wins over YAML (§4).
+  `YamlConfigSettingsSource(settings_cls, yaml_file=Path(CONFIG_PATH))` drives the YAML path from the
+  `CONFIG_PATH` env var; missing YAML file resolves to empty (so required fields then fail-fast).
+  Validation: IANA tz (`zoneinfo`), `HH:MM` sync_time, log level, `extra="forbid"` (unknown keys fail),
+  positive-int IDs. Added deps: `pydantic-settings[yaml]`, `tzdata` (slim image lacks system zoneinfo).
+  **mypy:** enabled `pydantic.mypy` plugin so a plain `Settings()` type-checks under `--strict`
+  (the plugin special-cases `BaseSettings` source-population) — avoids an obscure `**{}` unpack and
+  needs no `# type: ignore`.
+- **Next:** finish M0 — add `logging.py` (structlog). Ground structlog config API first
+  (processors, `configure`, JSON vs console renderer, stdlib integration).
