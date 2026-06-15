@@ -15,7 +15,8 @@ Field paths, status codes, and endpoints verified against the live API-Football 
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+import asyncio
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -23,6 +24,7 @@ import httpx
 
 from .base import Fixture, GameStatus, GoalEvent, MatchResult, SquadPlayer, Stage
 from .budget import RequestBudget
+from .retry import retry_async
 
 DEFAULT_BASE_URL = "https://v3.football.api-sports.io"
 
@@ -187,6 +189,25 @@ class ApiFootballError(RuntimeError):
     """Raised when API-Football returns an error payload or a malformed response."""
 
 
+# Transient HTTP failures worth retrying: network/timeout blips and server/rate-limit responses.
+# Verified against the httpx 0.28 exception hierarchy (https://www.python-httpx.org/exceptions/):
+# TransportError is the base for TimeoutException/ConnectError/ReadError; HTTPStatusError (raised
+# by raise_for_status) carries the response, so we gate it on the status code.
+_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _is_transient(exc: Exception) -> bool:
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _RETRY_STATUS
+    return False
+
+
+async def _default_sleep(delay: float) -> None:
+    await asyncio.sleep(delay)
+
+
 class ApiFootballProvider:
     """:class:`FootballProvider` backed by API-Football v3 over httpx, gated by RequestBudget.
 
@@ -205,11 +226,17 @@ class ApiFootballProvider:
         api_key: str = "",
         client: httpx.AsyncClient | None = None,
         clock: Callable[[], datetime] = _utcnow,
+        max_retries: int = 2,
+        retry_backoff: float = 0.5,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
         self._league_id = league_id
         self._season = season
         self._budget = budget
         self._clock = clock
+        self._max_retries = max_retries
+        self._retry_backoff = retry_backoff
+        self._sleep = sleep if sleep is not None else _default_sleep
         self._client = (
             client
             if client is not None
@@ -224,13 +251,26 @@ class ApiFootballProvider:
         """Close the underlying HTTP client (call on bot shutdown)."""
         await self._client.aclose()
 
-    async def _get(self, path: str, params: Mapping[str, Any]) -> list[Any]:
-        async def call() -> Any:
-            response = await self._client.get(path, params=dict(params))
-            response.raise_for_status()
-            return response.json()
+    async def _raw_get(self, path: str, params: dict[str, Any]) -> Any:
+        response = await self._client.get(path, params=params)
+        response.raise_for_status()
+        return response.json()
 
-        data = await self._budget.run(call)
+    async def _get(self, path: str, params: Mapping[str, Any]) -> list[Any]:
+        params_dict = dict(params)
+
+        async def attempt() -> Any:
+            # Budget is re-checked before each attempt and increments only on success, so retried
+            # (failed) attempts don't burn the daily counter.
+            return await self._budget.run(lambda: self._raw_get(path, params_dict))
+
+        data = await retry_async(
+            attempt,
+            retries=self._max_retries,
+            backoff_base=self._retry_backoff,
+            sleep=self._sleep,
+            is_transient=_is_transient,
+        )
         errors = data.get("errors")
         if errors:
             raise ApiFootballError(f"API-Football returned errors for {path}: {errors}")
@@ -253,10 +293,22 @@ class ApiFootballProvider:
         fixtures = [parse_fixture(item) for item in items]
         return [fixture for fixture in fixtures if fixture.kickoff_utc <= end]
 
-    async def get_live_results(self) -> list[MatchResult]:
-        params = {"league": self._league_id, "season": self._season, "live": "all"}
+    async def get_recent_results(self, lookback_hours: int) -> list[MatchResult]:
+        # `live=all` returns ONLY in-play fixtures (finished games drop out immediately), so the
+        # settlement path queries fixtures by date window instead: that returns every fixture with
+        # its current status.short, including FT/AET/PEN. Verified 2026-06 against
+        # https://www.api-football.com/documentation-v3 (fixtures: `live` vs `from`/`to`/`date`).
+        now = self._clock()
+        start = now - timedelta(hours=lookback_hours)
+        params = {
+            "league": self._league_id,
+            "season": self._season,
+            "from": start.date().isoformat(),
+            "to": now.date().isoformat(),
+            "timezone": "UTC",
+        }
         items = await self._get("/fixtures", params)
-        # Belt-and-braces: keep only our league even if `live=all` ignores the league filter.
+        # Keep only our league even if the API ignores the league filter on a date query.
         return [
             parse_match_result(item)
             for item in items

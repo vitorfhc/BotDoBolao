@@ -87,8 +87,8 @@ class _ExplodingProvider:
     async def get_fixtures(self, window_hours: int) -> list[Fixture]:
         raise AssertionError("should not be called")
 
-    async def get_live_results(self) -> list[MatchResult]:
-        raise AssertionError("get_live_results must not run when there are no active games")
+    async def get_recent_results(self, lookback_hours: int) -> list[MatchResult]:
+        raise AssertionError("get_recent_results must not run when there are no active games")
 
     async def get_match_result(self, fixture_id: int) -> MatchResult:
         raise AssertionError("should not be called")
@@ -123,7 +123,7 @@ async def test_collect_settles_finished_active_game(session: Session) -> None:
         now=NOW,
     )
     provider = FakeProvider(
-        live_results=[_result(GameStatus.FINISHED)],  # live endpoint: no goals
+        recent_results=[_result(GameStatus.FINISHED)],  # status feed: no goals
         match_results=[
             _result(GameStatus.FINISHED, goals=(GoalEvent(10, 10, 7, "N", False, False),))
         ],
@@ -137,7 +137,7 @@ async def test_collect_settles_finished_active_game(session: Session) -> None:
 
 async def test_collect_live_game_updates_status_without_settling(session: Session) -> None:
     _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)  # active
-    provider = FakeProvider(live_results=[_result(GameStatus.LIVE)])
+    provider = FakeProvider(recent_results=[_result(GameStatus.LIVE)])
     settled = await collect_settlements(session, provider, _settings(), now=NOW)
     assert settled == []
     game = GameRepository(session).get(1)

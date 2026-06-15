@@ -127,7 +127,7 @@ async def collect_settlements(
         return []
     active_ids = {game.fixture_id for game in active}
     settled: list[SettledGame] = []
-    for result in await provider.get_live_results():
+    for result in await provider.get_recent_results(settings.settle_grace_hours):
         if result.fixture_id not in active_ids:
             continue
         game = games.get(result.fixture_id)

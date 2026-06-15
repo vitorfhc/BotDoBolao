@@ -50,9 +50,9 @@ async def test_get_fixtures_returns_scripted() -> None:
     assert [f.fixture_id for f in fixtures] == [1, 2]
 
 
-async def test_get_live_results_returns_scripted() -> None:
-    provider = FakeProvider(live_results=[_result(1)])
-    assert [r.fixture_id for r in await provider.get_live_results()] == [1]
+async def test_get_recent_results_returns_scripted() -> None:
+    provider = FakeProvider(recent_results=[_result(1)])
+    assert [r.fixture_id for r in await provider.get_recent_results(24)] == [1]
 
 
 async def test_get_match_result_by_id() -> None:
@@ -77,8 +77,8 @@ async def test_get_squad_by_team_and_unknown_is_empty() -> None:
 
 async def test_setters_update_outputs() -> None:
     provider = FakeProvider()
-    provider.set_live_results([_result(1)])
-    assert len(await provider.get_live_results()) == 1
+    provider.set_recent_results([_result(1)])
+    assert len(await provider.get_recent_results(24)) == 1
     provider.set_match_result(_result(2))
     assert (await provider.get_match_result(2)).fixture_id == 2
     provider.set_fixtures([_fixture(3)])

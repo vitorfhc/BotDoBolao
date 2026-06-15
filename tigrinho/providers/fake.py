@@ -20,12 +20,12 @@ class FakeProvider:
         self,
         *,
         fixtures: Iterable[Fixture] | None = None,
-        live_results: Iterable[MatchResult] | None = None,
+        recent_results: Iterable[MatchResult] | None = None,
         match_results: Iterable[MatchResult] | None = None,
         squads: Mapping[int, Iterable[SquadPlayer]] | None = None,
     ) -> None:
         self._fixtures: list[Fixture] = list(fixtures or [])
-        self._live_results: list[MatchResult] = list(live_results or [])
+        self._recent_results: list[MatchResult] = list(recent_results or [])
         self._match_results: dict[int, MatchResult] = {
             m.fixture_id: m for m in (match_results or [])
         }
@@ -38,8 +38,8 @@ class FakeProvider:
     def set_fixtures(self, fixtures: Iterable[Fixture]) -> None:
         self._fixtures = list(fixtures)
 
-    def set_live_results(self, results: Iterable[MatchResult]) -> None:
-        self._live_results = list(results)
+    def set_recent_results(self, results: Iterable[MatchResult]) -> None:
+        self._recent_results = list(results)
 
     def set_match_result(self, result: MatchResult) -> None:
         self._match_results[result.fixture_id] = result
@@ -52,8 +52,8 @@ class FakeProvider:
     async def get_fixtures(self, window_hours: int) -> list[Fixture]:
         return list(self._fixtures)
 
-    async def get_live_results(self) -> list[MatchResult]:
-        return list(self._live_results)
+    async def get_recent_results(self, lookback_hours: int) -> list[MatchResult]:
+        return list(self._recent_results)
 
     async def get_match_result(self, fixture_id: int) -> MatchResult:
         try:
