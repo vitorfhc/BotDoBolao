@@ -199,7 +199,9 @@ placed at least one bet.
 - `stage` TEXT — `GROUP` | `KNOCKOUT`
 - `home_team_id` INTEGER, `home_team_name` TEXT
 - `away_team_id` INTEGER, `away_team_name` TEXT
-- `kickoff_utc` TIMESTAMP, `kickoff_local` TIMESTAMP (display)
+- `kickoff_utc` TIMESTAMP, `kickoff_local` TIMESTAMP (display) — note: all timestamps are stored
+  tz-aware/UTC-normalized, so `kickoff_local` holds the **same instant** as `kickoff_utc`; display
+  localization is done at render time from `kickoff_utc` via `timezone`.
 - `status` TEXT — provider status normalized: `SCHEDULED|LIVE|FINISHED|POSTPONED|CANCELLED|VOID`
 - `home_goals_90` INTEGER NULL, `away_goals_90` INTEGER NULL — **90′ result** (regulation incl. stoppage)
 - `advancing_team_id` INTEGER NULL — for knockout winner grading

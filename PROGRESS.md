@@ -53,9 +53,12 @@ operating rules are in `RALPH.md`.
     (new[scheduled+unseen] / rescheduled[kickoff changed] / voided[POSTPONED|CANCELLED & seen & not-void]),
     pt-BR text: `format_kickoff_pt`, `format_new_games_announcement` (role ping), reschedule/void notices;
     13 tests.
-  - [ ] `bot/sync_cog.py` — `tasks.loop(time=sync_time)` daily sync: provider.get_fixtures via budget →
-    `plan_sync` → apply (insert/update/void + void bets) → send announcements; reschedule/void notices.
-    **Ground discord.py `tasks.loop`/`ext.tasks` + channel send + `AllowedMentions` for role ping.**
+  - [x] `bot/sync_cog.py::apply_plan` (discord-free) — insert new games (match_hash + kickoff_local +
+    SCHEDULED), update rescheduled (kickoff/local/hash), void cancelled (status VOID + settled_at + void
+    its bets: 0 pts, is_correct None, settled_at); returns `AppliedSync` counts; 4 DB tests.
+  - [ ] `SyncCog` class — `tasks.loop(time=sync_time)`: build `ExistingGame` map → `get_fixtures(48)` via
+    provider → `plan_sync` → `apply_plan` → commit → send announcement + reschedule/void notices to
+    `announce_channel_id`. **Ground discord.py `ext.tasks` + `channel.send` + `AllowedMentions`.**
 - [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
 - [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
 - [ ] **M8 — Board cog:** `/placar geral|semana` with tie-breaks.
@@ -169,6 +172,11 @@ operating rules are in `RALPH.md`.
   new = unseen & SCHEDULED only (don't announce live/finished); reschedule only if still SCHEDULED;
   void only seen & not-already-VOID; placeholder = team id<=0 or blank name. No discord import (the cog
   imports this).
+- **Iter 19 (M5 apply_plan):** Wrote `apply_plan` (DB application of a SyncPlan), discord-free + tested
+  against a temp DB (insert/reschedule/void+void-bets). **Discovery:** `kickoff_local` uses the
+  UTC-normalizing `TZDateTime`, so it stores the *same instant* as `kickoff_utc` (wall-clock not kept) —
+  it's redundant; display localizes from `kickoff_utc` via `settings.timezone` (already in sync_planning).
+  Noted in COMPLETION.md §6. Avoided a `# type: ignore` in tests via an explicit assert.
 - **Next:** M5 — `bot/sync_cog.py` (the gateway/DB glue). **Ground discord.py `ext.tasks`**
   (`@tasks.loop(time=...)`, `before_loop`/`wait_until_ready`, error handling) + `channel.send` +
   `discord.AllowedMentions(roles=True)` so the `@Tigrinhos` ping actually notifies. Cog: daily loop at
