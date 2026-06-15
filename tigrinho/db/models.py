@@ -61,6 +61,9 @@ class Game(Base):
     advancing_team_id: Mapped[int | None]
     first_scorer_player_id: Mapped[int | None]
     announced_at: Mapped[datetime | None]
+    kickoff_announced_at: Mapped[datetime | None]
+    last_announced_home_goals: Mapped[int | None]
+    last_announced_away_goals: Mapped[int | None]
     settled_at: Mapped[datetime | None]
 
     bets: Mapped[list[Bet]] = relationship(back_populates="game")
