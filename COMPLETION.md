@@ -281,6 +281,9 @@ fixtures/results for tests and local development (selected via the `provider_mod
   matches drop out immediately — so the settlement path queries fixtures by **date window**
   (`/fixtures?league=&season=&from=&to=&timezone=UTC`), which returns each fixture's current
   `status.short` incl. `FT/AET/PEN`. One call covers all games. (Verified 2026-06 against the live docs.)
+- `MatchResult.home_goals`/`away_goals` — the **current/live aggregate** score (API top-level
+  `goals.{home,away}`), used for goal notifications (§9.3); distinct from `home_goals_90`/
+  `away_goals_90` (regulation `score.fulltime`, used by settlement).
 - **Transient errors:** retry timeouts/network errors and HTTP `429/500/502/503/504` with exponential
   backoff; only a successful request increments the budget counter.
 
@@ -409,6 +412,23 @@ A `tasks.loop(minutes=poll_interval_minutes)` (default **1 min**) — **self-hea
 `settle_grace_hours` (24h) — covering extra time/penalties and provider status lag with no manual
 step. Only once a game is **still unsettled past the grace** does the bot DM the admin that it
 **needs manual settlement** via the CLI (no more giving up at the 3h match window).
+
+### 9.3 Live notifications (kickoff & goals)
+
+The same per-cycle poll also posts live-match notifications to `announce_channel_id` (**no role
+ping**):
+
+1. **Kickoff** — when a game's status first becomes `LIVE`, the bot posts a "bola rolando" message
+   (bets are now closed) exactly once (deduped via `games.kickoff_announced_at`).
+2. **Goals** — the date-windowed `/fixtures` call also returns the **live score** (top-level
+   `goals.{home,away}`), so a goal is detected for **free** by comparing it to the last-announced
+   score (`games.last_announced_home_goals`/`away`). Only when the score changes does the bot fetch
+   `get_match_result()` once to name the scorer. Own goals are credited to the opponent; penalties
+   and own goals are annotated. A disallowed goal (VAR, score drops) resyncs silently. If the events
+   feed lags, the goal is posted as "artilheiro a confirmar". Penalty-shootout kicks are **not**
+   goals (the live `goals` field is match goals only).
+
+Both are restart-safe and idempotent (dedup state persists on the game row).
 
 ---
 

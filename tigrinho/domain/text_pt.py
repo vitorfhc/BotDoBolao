@@ -138,8 +138,9 @@ def help_text() -> str:
         "(nada de dinheiro de verdade!).",
         "",
         "Qualquer pessoa do servidor pode apostar. Quando um jogo é anunciado, use **/apostar** "
-        "para dar seu palpite. As apostas **fecham no apito inicial** de cada jogo. Quando o jogo "
-        "acaba, o bot apura tudo sozinho e atualiza o placar.",
+        "para dar seu palpite. As apostas **fecham no apito inicial** de cada jogo. O bot avisa "
+        "no canal quando a bola rola e a cada gol; quando o jogo acaba, ele apura tudo sozinho e "
+        "atualiza o placar.",
         "",
         "**📋 Comandos**",
     ]
