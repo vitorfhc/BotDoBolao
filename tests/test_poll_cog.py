@@ -45,3 +45,142 @@ async def test_poll_cog_constructs(tmp_path: Path) -> None:
         assert cog.poll.is_running() is False  # not started until cog_load
     finally:
         await bot.close()
+
+
+async def test_post_plain_sends_without_pings(tmp_path: Path) -> None:
+    import discord
+
+    from tigrinho.bot.client import TigrinhoBot
+
+    sent: list[tuple[str, discord.AllowedMentions]] = []
+
+    class _StubChannel(discord.abc.Messageable):
+        async def _get_channel(self) -> discord.abc.MessageableChannel:
+            raise NotImplementedError
+
+        async def send(  # type: ignore[override]
+            self, content: str, *, allowed_mentions: discord.AllowedMentions
+        ) -> None:
+            sent.append((content, allowed_mentions))
+
+    engine = create_db_engine(str(tmp_path / "t.db"))
+    Base.metadata.create_all(engine)
+    bot = TigrinhoBot(_settings())
+    try:
+        cog = PollCog(
+            bot,
+            settings=_settings(),
+            session_factory=create_session_factory(engine),
+            provider_factory=lambda _session: FakeProvider(),
+            clock=lambda: NOW,
+        )
+        bot.get_channel = lambda _id: _StubChannel()  # type: ignore[method-assign,assignment,return-value]
+        await cog._post_plain(["🟢 oi", "⚽ gol"])
+    finally:
+        await bot.close()
+
+    assert [content for content, _ in sent] == ["🟢 oi", "⚽ gol"]
+    assert all(am.roles is False and am.users is False and am.everyone is False for _, am in sent)
+
+
+async def test_run_poll_posts_kickoff_and_result_in_one_cycle(tmp_path: Path) -> None:
+    from datetime import timedelta
+
+    import discord
+
+    from tigrinho.bot.client import TigrinhoBot
+    from tigrinho.db.models import Game
+    from tigrinho.providers.base import GameStatus, MatchResult, Stage
+
+    sent: list[tuple[str, discord.AllowedMentions]] = []
+
+    class _StubChannel(discord.abc.Messageable):
+        async def _get_channel(self) -> discord.abc.MessageableChannel:
+            raise NotImplementedError
+
+        async def send(  # type: ignore[override]
+            self, content: str, *, allowed_mentions: discord.AllowedMentions
+        ) -> None:
+            sent.append((content, allowed_mentions))
+
+    engine = create_db_engine(str(tmp_path / "t.db"))
+    Base.metadata.create_all(engine)
+    factory = create_session_factory(engine)
+    # Game 1: just kicked off (still SCHEDULED in DB) -> kickoff notice (no ping).
+    # Game 2: already announced, now finished -> result message (pings bettors).
+    with factory() as session:
+        session.add(
+            Game(
+                fixture_id=1,
+                match_hash="h1",
+                stage="GROUP",
+                home_team_id=10,
+                home_team_name="Brasil",
+                away_team_id=20,
+                away_team_name="Argentina",
+                kickoff_utc=NOW - timedelta(hours=1),
+                kickoff_local=NOW - timedelta(hours=1),
+                status="SCHEDULED",
+                home_goals_90=None,
+                away_goals_90=None,
+                advancing_team_id=None,
+                announced_at=None,
+                kickoff_announced_at=None,
+                last_announced_home_goals=None,
+                last_announced_away_goals=None,
+                settled_at=None,
+            )
+        )
+        session.add(
+            Game(
+                fixture_id=2,
+                match_hash="h2",
+                stage="GROUP",
+                home_team_id=30,
+                home_team_name="França",
+                away_team_id=40,
+                away_team_name="Alemanha",
+                kickoff_utc=NOW - timedelta(hours=2),
+                kickoff_local=NOW - timedelta(hours=2),
+                status="LIVE",
+                home_goals_90=None,
+                away_goals_90=None,
+                advancing_team_id=None,
+                announced_at=None,
+                kickoff_announced_at=NOW - timedelta(hours=2),
+                last_announced_home_goals=None,
+                last_announced_away_goals=None,
+                settled_at=None,
+            )
+        )
+        session.commit()
+
+    provider = FakeProvider(
+        recent_results=[
+            MatchResult(1, GameStatus.LIVE, Stage.GROUP, None, None, None),
+            MatchResult(2, GameStatus.FINISHED, Stage.GROUP, 2, 1, None),
+        ],
+        match_results=[MatchResult(2, GameStatus.FINISHED, Stage.GROUP, 2, 1, None)],
+    )
+
+    bot = TigrinhoBot(_settings())
+    try:
+        cog = PollCog(
+            bot,
+            settings=_settings(),
+            session_factory=factory,
+            provider_factory=lambda _session: provider,
+            clock=lambda: NOW,
+        )
+        bot.get_channel = lambda _id: _StubChannel()  # type: ignore[method-assign,assignment,return-value]
+        await cog.run_poll()
+    finally:
+        await bot.close()
+
+    # A kickoff (no ping) is posted before the result (which pings bettors).
+    kickoff_idx = next(i for i, (c, _) in enumerate(sent) if c.startswith("🟢 **Bola rolando!**"))
+    result_idx = next(i for i, (c, _) in enumerate(sent) if c.startswith("🏁"))
+    assert kickoff_idx < result_idx
+    kickoff_am = sent[kickoff_idx][1]
+    assert kickoff_am.roles is False and kickoff_am.users is False and kickoff_am.everyone is False
+    assert sent[result_idx][1].users is True

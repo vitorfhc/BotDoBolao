@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from tigrinho.bot.bets_logic import place_bet
 from tigrinho.bot.board_cog import Period, build_standing_inputs, compute_standings
-from tigrinho.bot.poll_cog import collect_settlements
+from tigrinho.bot.poll_cog import collect_poll_outcome
 from tigrinho.bot.sync_cog import collect_sync_messages
 from tigrinho.config import Settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
@@ -107,9 +107,9 @@ async def test_end_to_end_fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     provider.set_recent_results([MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, None)])
     provider.set_match_result(MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, None))
     with factory() as session:
-        settled = await collect_settlements(session, provider, settings, now=T_SETTLE)
+        outcome = await collect_poll_outcome(session, provider, settings, now=T_SETTLE)
         session.commit()
-    assert len(settled) == 1
+    assert len(outcome.settled) == 1
 
     # 4) SCOREBOARD — derived purely from settled bets.
     with factory() as session:

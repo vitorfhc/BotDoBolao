@@ -1,4 +1,4 @@
-"""Tests for poll orchestration: collect_settlements + the stuck-game query (§9.2)."""
+"""Tests for poll orchestration: collect_poll_outcome + the stuck-game query (§9.2/§9.3)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
-from tigrinho.bot.poll_cog import collect_settlements, should_poll
+from tigrinho.bot.poll_cog import collect_poll_outcome, should_poll
 from tigrinho.config import Settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
 from tigrinho.db.models import Base, Game
@@ -62,6 +62,9 @@ def _add_game(session: Session, fid: int, *, kickoff: datetime, settled: datetim
             away_goals_90=None,
             advancing_team_id=None,
             announced_at=None,
+            kickoff_announced_at=None,
+            last_announced_home_goals=None,
+            last_announced_away_goals=None,
             settled_at=settled,
         )
     )
@@ -76,6 +79,20 @@ def _result(status: GameStatus) -> MatchResult:
         home_goals_90=2 if status is GameStatus.FINISHED else None,
         away_goals_90=1 if status is GameStatus.FINISHED else None,
         advancing_team_id=None,
+    )
+
+
+def _live_result(status: GameStatus, home: int, away: int) -> MatchResult:
+    """A MatchResult carrying a live aggregate score (for goal detection)."""
+    return MatchResult(
+        fixture_id=1,
+        status=status,
+        stage=Stage.GROUP,
+        home_goals_90=None,
+        away_goals_90=None,
+        advancing_team_id=None,
+        home_goals=home,
+        away_goals=away,
     )
 
 
@@ -101,8 +118,8 @@ def test_list_stuck_returns_unsettled_past_window(session: Session) -> None:
 async def test_collect_no_pollable_games_makes_no_api_call(session: Session) -> None:
     # An unsettled game past the settlement grace (>24h) is no longer pollable -> no provider call.
     _add_game(session, 1, kickoff=NOW - timedelta(hours=30), settled=None)
-    result = await collect_settlements(session, _ExplodingProvider(), _settings(), now=NOW)
-    assert result == []
+    outcome = await collect_poll_outcome(session, _ExplodingProvider(), _settings(), now=NOW)
+    assert outcome.settled == []
 
 
 async def test_collect_self_heals_overdue_game_within_grace(session: Session) -> None:
@@ -121,8 +138,8 @@ async def test_collect_self_heals_overdue_game_within_grace(session: Session) ->
         recent_results=[_result(GameStatus.FINISHED)],
         match_results=[_result(GameStatus.FINISHED)],
     )
-    settled = await collect_settlements(session, provider, _settings(), now=NOW)
-    assert len(settled) == 1  # self-healed despite being past the match window
+    outcome = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert len(outcome.settled) == 1  # self-healed despite being past the match window
     game = GameRepository(session).get(1)
     assert game is not None and game.status == "FINISHED"
 
@@ -138,23 +155,85 @@ async def test_collect_settles_finished_active_game(session: Session) -> None:
         now=NOW,
     )
     provider = FakeProvider(
-        recent_results=[_result(GameStatus.FINISHED)],  # status feed: no goals
+        recent_results=[_result(GameStatus.FINISHED)],  # status feed
         match_results=[_result(GameStatus.FINISHED)],
     )
-    settled = await collect_settlements(session, provider, _settings(), now=NOW)
-    assert len(settled) == 1
-    assert settled[0].players[0].total_points == 2  # WINNER HOME correct
+    outcome = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert len(outcome.settled) == 1
+    assert outcome.settled[0].players[0].total_points == 2  # WINNER HOME correct
     game = GameRepository(session).get(1)
     assert game is not None and game.status == "FINISHED"
 
 
-async def test_collect_live_game_updates_status_without_settling(session: Session) -> None:
-    _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)  # active
+async def test_collect_live_game_announces_kickoff_without_settling(session: Session) -> None:
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)  # active, LIVE
     provider = FakeProvider(recent_results=[_result(GameStatus.LIVE)])
-    settled = await collect_settlements(session, provider, _settings(), now=NOW)
-    assert settled == []
+    outcome = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert outcome.settled == []
+    assert [k.fixture_id for k in outcome.kickoffs] == [1]
+    assert outcome.goals == []
     game = GameRepository(session).get(1)
-    assert game is not None and game.status == "LIVE" and game.settled_at is None
+    assert game is not None
+    assert game.status == "LIVE" and game.settled_at is None
+    assert game.kickoff_announced_at == NOW  # dedup flag set
+
+
+async def test_collect_kickoff_announced_once(session: Session) -> None:
+    # Across a simulated restart (commit + fresh identity map), the kickoff is not re-announced.
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)
+    provider = FakeProvider(recent_results=[_result(GameStatus.LIVE)])
+    first = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert [k.fixture_id for k in first.kickoffs] == [1]
+    session.commit()
+    session.expunge_all()  # evict cached ORM objects so the next poll reloads from the DB
+    second = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert second.kickoffs == []
+
+
+async def test_collect_announces_new_goal_scoreline(session: Session) -> None:
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)
+    game = GameRepository(session).get(1)
+    assert game is not None
+    game.kickoff_announced_at = NOW  # kickoff already announced; isolate the goal
+    session.flush()
+    provider = FakeProvider(recent_results=[_live_result(GameStatus.LIVE, 1, 0)])
+    outcome = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert len(outcome.goals) == 1
+    goal = outcome.goals[0]
+    assert goal.home_goals == 1 and goal.away_goals == 0
+    assert goal.home_team_name == "Brasil" and goal.away_team_name == "Argentina"
+    refreshed = GameRepository(session).get(1)
+    assert refreshed is not None
+    assert refreshed.last_announced_home_goals == 1 and refreshed.last_announced_away_goals == 0
+
+
+async def test_collect_goal_announced_once_across_restart(session: Session) -> None:
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)
+    game = GameRepository(session).get(1)
+    assert game is not None
+    game.kickoff_announced_at = NOW
+    session.flush()
+    provider = FakeProvider(recent_results=[_live_result(GameStatus.LIVE, 1, 0)])
+    first = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert len(first.goals) == 1
+    session.commit()
+    session.expunge_all()  # simulate a restart: dedup must come from the persisted counters
+    second = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert second.goals == []
+
+
+async def test_collect_kickoff_and_goal_in_same_cycle(session: Session) -> None:
+    # A game first seen already LIVE at 1-0: kickoff AND the goal are announced in one pass.
+    _add_game(session, 1, kickoff=NOW - timedelta(hours=1), settled=None)
+    provider = FakeProvider(recent_results=[_live_result(GameStatus.LIVE, 1, 0)])
+    outcome = await collect_poll_outcome(session, provider, _settings(), now=NOW)
+    assert [k.fixture_id for k in outcome.kickoffs] == [1]
+    assert len(outcome.goals) == 1
+    assert outcome.goals[0].home_goals == 1 and outcome.goals[0].away_goals == 0
+    game = GameRepository(session).get(1)
+    assert game is not None
+    assert game.kickoff_announced_at == NOW
+    assert game.last_announced_home_goals == 1 and game.last_announced_away_goals == 0
 
 
 def test_should_poll_true_when_a_game_is_in_the_match_window() -> None:

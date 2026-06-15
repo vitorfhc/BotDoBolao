@@ -7,7 +7,8 @@ I/O, so they are exhaustively unit-testable with recorded JSON. The httpx-backed
 Field paths, status codes, and endpoints verified against the live API-Football v3 docs (2026-06):
 - Base ``https://v3.football.api-sports.io``; auth header ``x-apisports-key``.
 - ``GET /fixtures`` -> ``response[].{fixture.{id,date,status.short}, league.round,
-  teams.{home,away}.{id,name,winner}, score.{fulltime,extratime,penalty}.{home,away}}``.
+  teams.{home,away}.{id,name,winner}, goals.{home,away},
+  score.{fulltime,extratime,penalty}.{home,away}}``.
 """
 
 from __future__ import annotations
@@ -99,10 +100,16 @@ def parse_fixture(item: Mapping[str, Any]) -> Fixture:
 
 
 def parse_match_result(item: Mapping[str, Any]) -> MatchResult:
-    """Map one ``/fixtures`` item to a :class:`MatchResult` (90' = ``score.fulltime``)."""
+    """Map one ``/fixtures`` item to a :class:`MatchResult`.
+
+    ``home_goals_90``/``away_goals_90`` come from ``score.fulltime`` (regulation, for settlement);
+    ``home_goals``/``away_goals`` come from the top-level ``goals`` object (the current/live
+    aggregate score, used for goal notifications — §9.3).
+    """
     fixture = item["fixture"]
     teams = item["teams"]
     fulltime = item["score"].get("fulltime") or {}
+    live = item.get("goals") or {}
     home, away = teams["home"], teams["away"]
     advancing: int | None = None
     if home.get("winner") is True:
@@ -116,6 +123,8 @@ def parse_match_result(item: Mapping[str, Any]) -> MatchResult:
         home_goals_90=_opt_int(fulltime.get("home")),
         away_goals_90=_opt_int(fulltime.get("away")),
         advancing_team_id=advancing,
+        home_goals=_opt_int(live.get("home")),
+        away_goals=_opt_int(live.get("away")),
     )
 
 

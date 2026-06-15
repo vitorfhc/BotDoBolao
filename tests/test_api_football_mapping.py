@@ -136,3 +136,46 @@ def test_parse_match_result_group_no_advancing() -> None:
     result = parse_match_result(item)
     assert result.advancing_team_id is None
     assert result.home_goals_90 == 1
+
+
+def test_parse_match_result_includes_live_score() -> None:
+    # The top-level `goals` object is the current/live aggregate score (API `goals.{home,away}`).
+    result = parse_match_result(_KNOCKOUT_PENALTIES)
+    assert result.home_goals == 1
+    assert result.away_goals == 1
+
+
+def test_parse_match_result_live_score_present_while_fulltime_null() -> None:
+    # In-play fixture: `score.fulltime` is null, but `goals` carries the live score.
+    item: dict[str, Any] = {
+        "fixture": {"id": 2, "date": "2026-06-15T16:00:00-03:00", "status": {"short": "1H"}},
+        "league": {"round": "Group A - 1"},
+        "teams": {
+            "home": {"id": 10, "name": "Brasil"},
+            "away": {"id": 20, "name": "Argentina"},
+        },
+        "goals": {"home": 1, "away": 0},
+        "score": {"fulltime": {"home": None, "away": None}},
+    }
+    result = parse_match_result(item)
+    assert result.status is GameStatus.LIVE
+    assert result.home_goals_90 is None  # regulation result not final yet
+    assert result.away_goals_90 is None
+    assert result.home_goals == 1  # live score available
+    assert result.away_goals == 0
+
+
+def test_parse_match_result_absent_goals_key_yields_none() -> None:
+    # No top-level `goals` object at all (e.g. a not-started fixture) -> live score is None.
+    item: dict[str, Any] = {
+        "fixture": {"id": 3, "date": "2026-06-15T16:00:00-03:00", "status": {"short": "NS"}},
+        "league": {"round": "Group A - 1"},
+        "teams": {
+            "home": {"id": 10, "name": "Brasil"},
+            "away": {"id": 20, "name": "Argentina"},
+        },
+        "score": {},
+    }
+    result = parse_match_result(item)
+    assert result.home_goals is None
+    assert result.away_goals is None

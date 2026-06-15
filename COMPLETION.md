@@ -257,6 +257,9 @@ fixtures/results for tests and local development (selected via the `provider_mod
 
 - **90′ score:** use `score.fulltime` (this is the regulation result; it **excludes** extra time).
   `score.extratime` / `score.penalty` are used **only** to derive `advancing_team_id`.
+- **Live score:** the top-level `goals.{home,away}` is the current/live aggregate score; it
+  populates `MatchResult.home_goals`/`away_goals`, used for goal notifications (§9.3). Distinct from
+  `score.fulltime` (`home_goals_90`/`away_goals_90`, the regulation result used by settlement).
 - **Stage:** `KNOCKOUT` if the fixture round is a knockout round (Round of 32/16, QF, SF, Final,
   3rd place); else `GROUP`.
 - **Advancing team (knockout):** the side whose `teams.{home,away}.winner == true`.
@@ -392,6 +395,22 @@ A `tasks.loop(minutes=poll_interval_minutes)` (default **1 min**) — **self-hea
 `settle_grace_hours` (24h) — covering extra time/penalties and provider status lag with no manual
 step. Only once a game is **still unsettled past the grace** does the bot DM the admin that it
 **needs manual settlement** via the CLI (no more giving up at the 3h match window).
+
+### 9.3 Live notifications (kickoff & goals)
+
+The same per-cycle poll also posts live-match notifications to `announce_channel_id` (**no role
+ping**):
+
+1. **Kickoff** — when a game's status first becomes `LIVE`, the bot posts a "bola rolando" message
+   (bets are now closed) exactly once (deduped via `games.kickoff_announced_at`).
+2. **Goals** — the date-windowed `/fixtures` call also returns the **live score** (top-level
+   `goals.{home,away}`), so a goal is detected for **free** by comparing it to the last-announced
+   score (`games.last_announced_home_goals`/`last_announced_away_goals`). The message is the new
+   **scoreline only** (no scorer — the goal timeline endpoint is not used). A disallowed goal (VAR,
+   score drops) resyncs silently. Penalty-shootout kicks are **not** goals (the live `goals` field
+   is match goals only).
+
+Both are restart-safe and idempotent (dedup state persists on the game row).
 
 ---
 
