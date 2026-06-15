@@ -107,7 +107,8 @@ operating rules are in `RALPH.md`.
   - [x] `tigrinho/cli.py` scaffold (Typer app + `games`/`players`/`bets` sub-apps, `__main__` entry,
     `_open_session` seam) + group 1 read: `games list`, `players list`; 4 CliRunner tests. Dep: `typer`.
   - [ ] Group 1 finish: `games show`, `bets list`, create/edit/delete (destructive → `--confirm`).
-  - [ ] Group 2: manual result & re-settle (set 90' score + first scorer → `apply_settlement`, idempotent).
+  - [x] Group 2: `result set <fixture_id> <home> <away> [--scorer] [--advancing]` → build MatchResult →
+    `apply_settlement` (idempotent re-settle); prints summary; 3 CliRunner tests.
   - [ ] Group 3: force sync; seed/refresh squads (provider→`SquadRepository`); print API budget counter.
   - [ ] Group 4: recalc board (`build_standing_inputs`+`compute_standings`) & DB dump.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
@@ -267,8 +268,12 @@ operating rules are in `RALPH.md`.
 - **Iter 35 (M9 CLI scaffold + group 1 reads):** Grounded Typer 0.26.7. `cli.py` Typer app + sub-apps +
   `_open_session` seam (tests monkeypatch it) + `games list`/`players list`; `python -m tigrinho.cli`
   entry. 4 CliRunner tests. Dep: `typer`.
-- **Next:** M9 group 2 — **manual result & re-settle** (most valuable next): `cli.py` `result set
-  <fixture_id> <home> <away> [--scorer <player_id>] [--advancing <team_id>]` → build a `MatchResult` →
-  `apply_settlement` → commit; idempotent (overwrites); print the SettledGame summary. Testable via
-  CliRunner over a temp DB (seed game+bets, run, assert graded). Then groups 1-finish/3/4 over following
-  iterations. Reuse domain (MatchResult/apply_settlement). Keep bodies thin; CliRunner tests each.
+- **Iter 36 (M9 group 2):** `result set` (manual result + idempotent re-settle via apply_settlement).
+  3 CliRunner tests. NB: cli imports apply_settlement from bot.poll_cog (pulls discord; fine).
+- **Next:** M9 group 3 — **force sync & cache ops**: `sync run` (build a fake/real provider for the
+  session + `collect_sync_messages`, print counts — but careful: real provider needs budget/httpx;
+  for CLI use the same provider_factory pattern as cogs, or a simpler `sync` that calls
+  `collect_sync_messages` with a provider built from config). `squads seed <team_id>` (provider.get_squad
+  → `SquadRepository.replace_team`). `budget show` (today's `ApiUsageRepository.get_count` + remaining).
+  Then group 4 (recalc board, db dump) + group 1 finish (show/create/delete). Keep thin; CliRunner tests.
+  Consider a shared `_build_provider(session, settings)` for CLI+cogs. Then M9 done → M10 deploy.
