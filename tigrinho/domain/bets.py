@@ -136,7 +136,10 @@ def dump_payload(payload: BetPayload) -> str:
 
 def parse_payload_json(category: BetCategory, raw: str) -> BetPayload:
     """Parse and validate a stored ``payload_json`` string for ``category``."""
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise InvalidBetPayload(f"payload JSON is not valid: {exc}") from exc
     if not isinstance(data, dict):
         raise InvalidBetPayload("payload JSON must be an object")
     return parse_payload(category, data)

@@ -114,3 +114,8 @@ def test_json_round_trip() -> None:
 def test_parse_payload_json_rejects_non_object() -> None:
     with pytest.raises(InvalidBetPayload):
         parse_payload_json(BetCategory.WINNER, "[1, 2]")
+
+
+def test_parse_payload_json_rejects_malformed_json() -> None:
+    with pytest.raises(InvalidBetPayload):
+        parse_payload_json(BetCategory.WINNER, "{not valid json")

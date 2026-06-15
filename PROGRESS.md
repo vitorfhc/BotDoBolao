@@ -31,13 +31,15 @@ operating rules are in `RALPH.md`.
     33 tests) **and** `ApiFootballProvider` (httpx.AsyncClient, `x-apisports-key`; `/fixtures` with
     from/to+window filter, `live=all`+league filter, `/fixtures/events`, `/players/squads`; calls gated
     by `RequestBudget`; body-`errors`→`ApiFootballError`; `aclose()`); 8 mock-transport tests.
-- [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
+- [x] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
   - [x] `domain/bets.py` — `BetCategory` + selection enums + frozen payload models (ExactScore/FirstScorer/Btts/Winner/OverUnder) + `parse_payload`/`payload_to_dict`/`dump_payload`/`parse_payload_json` with validation (`InvalidBetPayload`); PEP 695 generics; 21 tests.
   - [x] `domain/scoring.py` — `POINTS` table + `MatchFacts` (grading input: stage, team ids, 90' goals,
     goal timeline, advancing) + `first_genuine_scorer`, `is_winning_bet` (all 5 categories;
     knockout=advancing/no-draw, group=1X2, BTTS pattern, O/U 2.5 boundary, first-scorer min<=90 skip
     own goals), `score_bet`; 28 exhaustive tests.
-  - [ ] `domain/settlement.py` — grade every bet for a `MatchResult` (idempotent) + exhaustive §16 tests.
+  - [x] `domain/settlement.py` — `BetInput`/`BetOutcome`, `match_facts_from_result` (requires 90'
+    scores), `settle_game` (grade every bet; pure → idempotent; malformed payload loses, no crash);
+    7 tests (full mixed game, idempotency, empty, malformed-json-loses, facts builder).
 - [ ] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
 - [ ] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
 - [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
@@ -135,8 +137,13 @@ operating rules are in `RALPH.md`.
   advancing) built by settlement from Game+MatchResult; grade against that. `first_genuine_scorer`
   sorts by minute (robust to unordered events), skips own goals, requires minute<=90. 28 exhaustive
   tests incl. O/U boundaries (2/3), knockout draw-selection-loses, own-goal-first, ET-goal-excluded.
-- **Next:** M3 — `domain/settlement.py`: pure `settle_game(match_result, bets, *, home_team_id,
-  away_team_id) -> list[BetOutcome]` (or build `MatchFacts` + grade each bet via `score_bet`,
-  parse payload by category). Idempotent (re-run → identical). Returns per-bet (is_correct,
-  points, settled). Also expose first_genuine_scorer result for storing Game.first_scorer_player_id.
-  Exhaustive tests incl. idempotency + a full mixed-bet game. Then M3 done → M4 bot skeleton.
+- **Iter 15 (M3 settlement.py, M3 DONE):** `settle_game(facts, bets)->[BetOutcome]` pure/idempotent;
+  `match_facts_from_result` builds `MatchFacts` (raises if 90' score missing → caller treats as stuck).
+  Fixed `parse_payload_json` to wrap `json.JSONDecodeError`→`InvalidBetPayload` (malformed stored
+  payload loses instead of crashing settlement). **M3 complete** (domain pure + exhaustively tested).
+- **Next:** M4 — Bot skeleton. **Ground discord.py 2.x first** (web search: `commands.Bot`/`Client`,
+  intents [no privileged needed], app-command tree + `guild` scoped sync in `setup_hook`/`on_ready`,
+  Cog + `@app_commands.command`, `Interaction.response`). Add `discord.py` dep. Build `bot/client.py`
+  (client + startup config validation via `load_settings` + role/permission fail-fast check) and
+  `bot/help_cog.py` (`/ajuda` pt-BR per §11). Test the pure pieces (e.g. help text builder, config
+  check) without a live gateway; keep gateway code thin.
