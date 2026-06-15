@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from tigrinho.bot.apostar_view import (
     DISCORD_SELECT_LIMIT,
+    Matchup,
     game_choice_label,
     paginate,
     winner_selection_options,
@@ -53,3 +54,10 @@ def test_game_choice_label() -> None:
     label = game_choice_label("Brasil", "Argentina", kickoff_local)
     assert "Brasil x Argentina" in label
     assert "16:00" in label
+
+
+def test_matchup_str_renders_home_x_away() -> None:
+    matchup = Matchup(home_name="Brasil", away_name="Argentina")
+    assert str(matchup) == "Brasil x Argentina"
+    assert matchup.home_name == "Brasil"
+    assert matchup.away_name == "Argentina"

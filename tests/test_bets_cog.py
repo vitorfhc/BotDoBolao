@@ -106,7 +106,7 @@ def test_build_my_bet_lines(session: Session) -> None:
     lines = build_my_bet_lines(session, 100, scorer_resolver={7: "Neymar"}.get)
     by_cat = {line.category: line for line in lines}
     assert by_cat[BetCategory.FIRST_SCORER].value == "Neymar"  # resolved scorer name
-    assert by_cat[BetCategory.WINNER].value == "Mandante"
+    assert by_cat[BetCategory.WINNER].value == "Brasil"  # home team name, not "Mandante"
     assert by_cat[BetCategory.WINNER].settled is False
     settled = by_cat[BetCategory.EXACT_SCORE]
     assert settled.settled is True

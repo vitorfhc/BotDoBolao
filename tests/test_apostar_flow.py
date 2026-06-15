@@ -13,10 +13,12 @@ from tigrinho.bot.apostar_view import (
     APOSTAR_CATEGORIES,
     FlowContext,
     GameChoice,
+    Matchup,
     build_apostar_view,
     build_category_view,
     build_value_view,
     games_to_choices,
+    score_field_label,
 )
 from tigrinho.config import Settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
@@ -86,10 +88,17 @@ def test_games_to_choices() -> None:
     assert choices[0].stage is Stage.GROUP
 
 
+def test_games_to_choices_carries_team_names() -> None:
+    choices = games_to_choices([_game(1)], _settings().tzinfo)
+    assert choices[0].matchup.home_name == "Brasil"
+    assert choices[0].matchup.away_name == "Argentina"
+    assert str(choices[0].matchup) == "Brasil x Argentina"
+
+
 def test_apostar_view_lists_games(ctx: FlowContext) -> None:
     choices = [
-        GameChoice(fixture_id=1, label="A x B", stage=Stage.GROUP, matchup="A x B"),
-        GameChoice(fixture_id=2, label="C x D", stage=Stage.KNOCKOUT, matchup="C x D"),
+        GameChoice(fixture_id=1, label="A x B", stage=Stage.GROUP, matchup=Matchup("A", "B")),
+        GameChoice(fixture_id=2, label="C x D", stage=Stage.KNOCKOUT, matchup=Matchup("C", "D")),
     ]
     select = _first_select(build_apostar_view(ctx, choices))
     assert {o.value for o in select.options} == {"1", "2"}
@@ -97,7 +106,7 @@ def test_apostar_view_lists_games(ctx: FlowContext) -> None:
 
 def test_category_view_offers_implemented_categories(ctx: FlowContext) -> None:
     select = _first_select(
-        build_category_view(ctx, fixture_id=1, stage=Stage.GROUP, matchup="A x B")
+        build_category_view(ctx, fixture_id=1, stage=Stage.GROUP, matchup=Matchup("A", "B"))
     )
     assert len(select.options) == len(APOSTAR_CATEGORIES)
     assert {o.value for o in select.options} == {c.value for c in APOSTAR_CATEGORIES}
@@ -106,7 +115,11 @@ def test_category_view_offers_implemented_categories(ctx: FlowContext) -> None:
 def test_value_view_winner_knockout_hides_draw(ctx: FlowContext) -> None:
     select = _first_select(
         build_value_view(
-            ctx, fixture_id=1, matchup="A x B", category=BetCategory.WINNER, stage=Stage.KNOCKOUT
+            ctx,
+            fixture_id=1,
+            matchup=Matchup("A", "B"),
+            category=BetCategory.WINNER,
+            stage=Stage.KNOCKOUT,
         )
     )
     values = {o.value for o in select.options}
@@ -116,7 +129,11 @@ def test_value_view_winner_knockout_hides_draw(ctx: FlowContext) -> None:
 def test_value_view_winner_group_includes_draw(ctx: FlowContext) -> None:
     select = _first_select(
         build_value_view(
-            ctx, fixture_id=1, matchup="A x B", category=BetCategory.WINNER, stage=Stage.GROUP
+            ctx,
+            fixture_id=1,
+            matchup=Matchup("A", "B"),
+            category=BetCategory.WINNER,
+            stage=Stage.GROUP,
         )
     )
     assert {o.value for o in select.options} == {"HOME", "DRAW", "AWAY"}
@@ -125,16 +142,61 @@ def test_value_view_winner_group_includes_draw(ctx: FlowContext) -> None:
 def test_value_view_btts_and_over_under(ctx: FlowContext) -> None:
     btts = _first_select(
         build_value_view(
-            ctx, fixture_id=1, matchup="A x B", category=BetCategory.BTTS, stage=Stage.GROUP
+            ctx,
+            fixture_id=1,
+            matchup=Matchup("A", "B"),
+            category=BetCategory.BTTS,
+            stage=Stage.GROUP,
         )
     )
     assert len(btts.options) == 4
     over_under = _first_select(
         build_value_view(
-            ctx, fixture_id=1, matchup="A x B", category=BetCategory.OVER_UNDER, stage=Stage.GROUP
+            ctx,
+            fixture_id=1,
+            matchup=Matchup("A", "B"),
+            category=BetCategory.OVER_UNDER,
+            stage=Stage.GROUP,
         )
     )
     assert {o.value for o in over_under.options} == {"OVER", "UNDER"}
+
+
+def test_value_view_winner_labels_are_team_names(ctx: FlowContext) -> None:
+    select = _first_select(
+        build_value_view(
+            ctx,
+            fixture_id=1,
+            matchup=Matchup("Brasil", "Argentina"),
+            category=BetCategory.WINNER,
+            stage=Stage.GROUP,
+        )
+    )
+    assert {o.label for o in select.options} == {"Brasil", "Empate", "Argentina"}
+
+
+def test_value_view_btts_labels_use_team_names(ctx: FlowContext) -> None:
+    select = _first_select(
+        build_value_view(
+            ctx,
+            fixture_id=1,
+            matchup=Matchup("Brasil", "França"),
+            category=BetCategory.BTTS,
+            stage=Stage.GROUP,
+        )
+    )
+    labels = {o.label for o in select.options}
+    assert "Só Brasil" in labels
+    assert "Só França" in labels
+
+
+def test_score_field_label_uses_team_name() -> None:
+    assert score_field_label("Brasil") == "Gols: Brasil"
+    assert score_field_label("Argentina") == "Gols: Argentina"
+
+
+def test_score_field_label_truncates_to_discord_limit() -> None:
+    assert len(score_field_label("X" * 100)) == 45
 
 
 async def test_apostar_command_registered(tmp_path: Path) -> None:

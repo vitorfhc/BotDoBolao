@@ -28,7 +28,7 @@ class MyBetLine:
 
     matchup: str
     category: BetCategory
-    value: str  # already rendered (e.g. "Mandante", "2x1")
+    value: str  # already rendered (e.g. "Brasil", "2x1")
     settled: bool
     is_correct: bool | None
     points: int | None

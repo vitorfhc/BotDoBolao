@@ -58,7 +58,12 @@ def build_my_bet_lines(
                 if isinstance(payload, FirstScorerPayload)
                 else None
             )
-            value = render_payload(payload, scorer_name=scorer_name)
+            value = render_payload(
+                payload,
+                scorer_name=scorer_name,
+                home_name=game.home_team_name,
+                away_name=game.away_team_name,
+            )
         except InvalidBetPayload:
             value = "(inválido)"
         lines.append(

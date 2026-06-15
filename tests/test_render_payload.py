@@ -49,3 +49,31 @@ def test_render_winner() -> None:
 def test_render_over_under() -> None:
     assert render_payload(OverUnderPayload(OverUnderSelection.OVER)) == "Mais de 2.5"
     assert render_payload(OverUnderPayload(OverUnderSelection.UNDER)) == "Menos de 2.5"
+
+
+def test_render_winner_with_team_names() -> None:
+    home, away = "Brasil", "Argentina"
+    assert (
+        render_payload(WinnerPayload(WinnerSelection.HOME), home_name=home, away_name=away)
+        == "Brasil"
+    )
+    assert (
+        render_payload(WinnerPayload(WinnerSelection.AWAY), home_name=home, away_name=away)
+        == "Argentina"
+    )
+    assert (
+        render_payload(WinnerPayload(WinnerSelection.DRAW), home_name=home, away_name=away)
+        == "Empate"
+    )
+
+
+def test_render_btts_with_team_names_drops_gendered_article() -> None:
+    # "Só a França" would need a feminine article we can't know — drop it.
+    assert (
+        render_payload(BttsPayload(BttsSelection.ONLY_HOME), home_name="Brasil", away_name="França")
+        == "Só Brasil"
+    )
+    assert (
+        render_payload(BttsPayload(BttsSelection.ONLY_AWAY), home_name="Brasil", away_name="França")
+        == "Só França"
+    )

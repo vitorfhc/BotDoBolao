@@ -29,11 +29,11 @@ from tigrinho.domain.bets import (
     parse_payload,
 )
 from tigrinho.domain.text_pt import (
-    BTTS_LABELS_PT,
     CATEGORY_LABELS_PT,
     OVER_UNDER_LABELS_PT,
-    WINNER_LABELS_PT,
+    btts_label,
     render_payload,
+    winner_label,
 )
 from tigrinho.providers.base import Stage
 
@@ -72,6 +72,31 @@ def game_choice_label(home_name: str, away_name: str, kickoff_local: datetime) -
     return f"{home_name} x {away_name} — {format_kickoff_pt(kickoff_local)}"
 
 
+# Discord caps modal input labels at 45 chars; team names are short but truncate to be safe.
+MODAL_LABEL_LIMIT = 45
+
+
+def score_field_label(team_name: str) -> str:
+    """Placar-exato modal field label for a team's goals, e.g. ``Gols: Brasil`` (capped at 45)."""
+    return f"Gols: {team_name}"[:MODAL_LABEL_LIMIT]
+
+
+@dataclass(frozen=True, slots=True)
+class Matchup:
+    """The two teams of a game, carried through the /apostar flow.
+
+    Bundles the names that always travel together so option/field labels can show *who* a bet is
+    on (e.g. ``Brasil``, ``Só França``) instead of the generic ``mandante``/``visitante``. Renders
+    as ``Home x Away`` for display, so existing f-string usages keep working unchanged.
+    """
+
+    home_name: str
+    away_name: str
+
+    def __str__(self) -> str:
+        return f"{self.home_name} x {self.away_name}"
+
+
 @dataclass(frozen=True, slots=True)
 class FlowContext:
     """Everything the /apostar components need; carried through the flow's steps."""
@@ -90,7 +115,7 @@ class GameChoice:
     fixture_id: int
     label: str
     stage: Stage
-    matchup: str
+    matchup: Matchup
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +139,7 @@ def games_to_choices(games: Sequence[Game], tz: tzinfo) -> list[GameChoice]:
     """Map open games to Select choices (localized labels)."""
     choices: list[GameChoice] = []
     for game in games:
-        matchup = f"{game.home_team_name} x {game.away_team_name}"
+        matchup = Matchup(game.home_team_name, game.away_team_name)
         label = game_choice_label(
             game.home_team_name, game.away_team_name, game.kickoff_utc.astimezone(tz)
         )
@@ -131,7 +156,7 @@ async def _finalize_bet(
     interaction: discord.Interaction,
     *,
     fixture_id: int,
-    matchup: str,
+    matchup: Matchup,
     category: BetCategory,
     payload: BetPayload,
     edit: bool,
@@ -149,9 +174,9 @@ async def _finalize_bet(
                 now=ctx.clock(),
             )
             session.commit()
+        rendered = render_payload(payload, home_name=matchup.home_name, away_name=matchup.away_name)
         message = (
-            f"✅ Palpite registrado — **{matchup}**\n"
-            f"{CATEGORY_LABELS_PT[category]}: {render_payload(payload)}"
+            f"✅ Palpite registrado — **{matchup}**\n{CATEGORY_LABELS_PT[category]}: {rendered}"
         )
     except BetError as exc:
         message = f"❌ {exc}"
@@ -183,7 +208,9 @@ class GameSelect(ui.Select[ui.View]):
 
 
 class CategorySelect(ui.Select[ui.View]):
-    def __init__(self, ctx: FlowContext, *, fixture_id: int, stage: Stage, matchup: str) -> None:
+    def __init__(
+        self, ctx: FlowContext, *, fixture_id: int, stage: Stage, matchup: Matchup
+    ) -> None:
         super().__init__(
             placeholder="Escolha a categoria",
             options=[
@@ -242,7 +269,7 @@ class ValueSelect(ui.Select[ui.View]):
         ctx: FlowContext,
         *,
         fixture_id: int,
-        matchup: str,
+        matchup: Matchup,
         category: BetCategory,
         options: Sequence[tuple[str, str]],
     ) -> None:
@@ -273,16 +300,16 @@ class ValueSelect(ui.Select[ui.View]):
 
 
 class ScoreModal(ui.Modal):
-    def __init__(self, ctx: FlowContext, *, fixture_id: int, matchup: str) -> None:
+    def __init__(self, ctx: FlowContext, *, fixture_id: int, matchup: Matchup) -> None:
         super().__init__(title="Placar exato")
         self._ctx = ctx
         self._fixture_id = fixture_id
         self._matchup = matchup
         self.home_input: ui.TextInput[ScoreModal] = ui.TextInput(
-            label="Gols do mandante", placeholder="0", max_length=2, required=True
+            label=score_field_label(matchup.home_name), placeholder="0", max_length=2, required=True
         )
         self.away_input: ui.TextInput[ScoreModal] = ui.TextInput(
-            label="Gols do visitante", placeholder="0", max_length=2, required=True
+            label=score_field_label(matchup.away_name), placeholder="0", max_length=2, required=True
         )
         self.add_item(self.home_input)
         self.add_item(self.away_input)
@@ -316,7 +343,7 @@ def build_apostar_view(ctx: FlowContext, choices: Sequence[GameChoice]) -> ui.Vi
 
 
 def build_category_view(
-    ctx: FlowContext, *, fixture_id: int, stage: Stage, matchup: str
+    ctx: FlowContext, *, fixture_id: int, stage: Stage, matchup: Matchup
 ) -> ui.View:
     """Second step: a Select of the bet categories."""
     view = ui.View(timeout=VIEW_TIMEOUT)
@@ -325,13 +352,19 @@ def build_category_view(
 
 
 def build_value_view(
-    ctx: FlowContext, *, fixture_id: int, matchup: str, category: BetCategory, stage: Stage
+    ctx: FlowContext, *, fixture_id: int, matchup: Matchup, category: BetCategory, stage: Stage
 ) -> ui.View:
     """Third step (select-based categories): a Select of the answer options."""
     if category is BetCategory.WINNER:
-        options = [(WINNER_LABELS_PT[s], s.value) for s in winner_selection_options(stage)]
+        options = [
+            (winner_label(s, home_name=matchup.home_name, away_name=matchup.away_name), s.value)
+            for s in winner_selection_options(stage)
+        ]
     elif category is BetCategory.BTTS:
-        options = [(BTTS_LABELS_PT[s], s.value) for s in BttsSelection]
+        options = [
+            (btts_label(s, home_name=matchup.home_name, away_name=matchup.away_name), s.value)
+            for s in BttsSelection
+        ]
     elif category is BetCategory.OVER_UNDER:
         options = [(OVER_UNDER_LABELS_PT[s], s.value) for s in OverUnderSelection]
     else:
@@ -345,7 +378,12 @@ def build_value_view(
 
 class ScorerSelect(ui.Select[ui.View]):
     def __init__(
-        self, ctx: FlowContext, *, fixture_id: int, matchup: str, scorers: Sequence[ScorerChoice]
+        self,
+        ctx: FlowContext,
+        *,
+        fixture_id: int,
+        matchup: Matchup,
+        scorers: Sequence[ScorerChoice],
     ) -> None:
         super().__init__(
             placeholder="Escolha o jogador",
@@ -380,7 +418,7 @@ class PageButton(ui.Button[ui.View]):
         ctx: FlowContext,
         *,
         fixture_id: int,
-        matchup: str,
+        matchup: Matchup,
         scorers: Sequence[ScorerChoice],
         target_page: int,
         label: str,
@@ -408,7 +446,7 @@ def build_squad_view(
     ctx: FlowContext,
     *,
     fixture_id: int,
-    matchup: str,
+    matchup: Matchup,
     scorers: Sequence[ScorerChoice],
     page: int = 0,
 ) -> ui.View:

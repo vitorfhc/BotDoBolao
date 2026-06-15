@@ -42,17 +42,49 @@ OVER_UNDER_LABELS_PT: dict[OverUnderSelection, str] = {
 }
 
 
-def render_payload(payload: BetPayload, *, scorer_name: str | None = None) -> str:
-    """Render a bet payload's value human-readably in pt-BR (pairs with the category label)."""
+def winner_label(
+    sel: WinnerSelection, *, home_name: str | None = None, away_name: str | None = None
+) -> str:
+    """Winner label — the team name when known, else the generic ``Mandante``/``Visitante``."""
+    if sel is WinnerSelection.HOME and home_name:
+        return home_name
+    if sel is WinnerSelection.AWAY and away_name:
+        return away_name
+    return WINNER_LABELS_PT[sel]
+
+
+def btts_label(
+    sel: BttsSelection, *, home_name: str | None = None, away_name: str | None = None
+) -> str:
+    """BTTS label — ``Só <time>`` when the team is known (no gendered article), else generic."""
+    if sel is BttsSelection.ONLY_HOME and home_name:
+        return f"Só {home_name}"
+    if sel is BttsSelection.ONLY_AWAY and away_name:
+        return f"Só {away_name}"
+    return BTTS_LABELS_PT[sel]
+
+
+def render_payload(
+    payload: BetPayload,
+    *,
+    scorer_name: str | None = None,
+    home_name: str | None = None,
+    away_name: str | None = None,
+) -> str:
+    """Render a bet payload's value human-readably in pt-BR (pairs with the category label).
+
+    ``home_name``/``away_name`` make Winner/BTTS show the actual teams (e.g. ``Brasil``,
+    ``Só França``); without them it falls back to the generic ``Mandante``/``Visitante`` wording.
+    """
     match payload:
         case ExactScorePayload(home=home, away=away):
             return f"{home}x{away}"
         case FirstScorerPayload(player_id=player_id):
             return scorer_name if scorer_name is not None else f"#{player_id}"
         case BttsPayload(sel=sel):
-            return BTTS_LABELS_PT[sel]
+            return btts_label(sel, home_name=home_name, away_name=away_name)
         case WinnerPayload(sel=sel):
-            return WINNER_LABELS_PT[sel]
+            return winner_label(sel, home_name=home_name, away_name=away_name)
         case OverUnderPayload(sel=sel):
             return OVER_UNDER_LABELS_PT[sel]
         case _:  # pragma: no cover - exhaustive over BetPayload

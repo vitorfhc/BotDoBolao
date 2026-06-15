@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from tigrinho.bot.apostar_view import (
     APOSTAR_CATEGORIES,
     FlowContext,
+    Matchup,
     ScorerChoice,
     build_squad_view,
     load_scorer_choices,
@@ -78,13 +79,17 @@ def test_load_scorer_choices_combines_both_teams(session: Session) -> None:
 
 def test_build_squad_view_paginates() -> None:
     scorers = [ScorerChoice(player_id=i, name=f"P{i}") for i in range(30)]
-    page0 = build_squad_view(_ctx(), fixture_id=1, matchup="A x B", scorers=scorers, page=0)
+    page0 = build_squad_view(
+        _ctx(), fixture_id=1, matchup=Matchup("A", "B"), scorers=scorers, page=0
+    )
     assert len(_selects(page0)[0].options) == 25
     prev0, next0 = _buttons(page0)
     assert prev0.disabled is True  # first page
     assert next0.disabled is False
 
-    page1 = build_squad_view(_ctx(), fixture_id=1, matchup="A x B", scorers=scorers, page=1)
+    page1 = build_squad_view(
+        _ctx(), fixture_id=1, matchup=Matchup("A", "B"), scorers=scorers, page=1
+    )
     assert len(_selects(page1)[0].options) == 5
     prev1, next1 = _buttons(page1)
     assert prev1.disabled is False
@@ -93,7 +98,7 @@ def test_build_squad_view_paginates() -> None:
 
 def test_build_squad_view_single_page_has_no_buttons() -> None:
     view = build_squad_view(
-        _ctx(), fixture_id=1, matchup="A x B", scorers=[ScorerChoice(1, "X")], page=0
+        _ctx(), fixture_id=1, matchup=Matchup("A", "B"), scorers=[ScorerChoice(1, "X")], page=0
     )
     assert len(_buttons(view)) == 0
     assert {o.value for o in _selects(view)[0].options} == {"1"}

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from tigrinho.domain.bets import BetCategory
+from tigrinho.domain.bets import BetCategory, BttsSelection, WinnerSelection
 from tigrinho.domain.scoring import POINTS
-from tigrinho.domain.text_pt import CATEGORY_LABELS_PT, help_text
+from tigrinho.domain.text_pt import (
+    CATEGORY_LABELS_PT,
+    btts_label,
+    help_text,
+    winner_label,
+)
 
 ALL_COMMANDS = [
     "/apostar",
@@ -56,3 +61,33 @@ def test_help_mentions_no_real_money() -> None:
 def test_help_fits_discord_embed_description_limit() -> None:
     # Discord embed description limit is 4096 chars.
     assert len(help_text()) <= 4096
+
+
+def test_winner_label_uses_team_names() -> None:
+    assert winner_label(WinnerSelection.HOME, home_name="Brasil", away_name="Argentina") == "Brasil"
+    assert (
+        winner_label(WinnerSelection.AWAY, home_name="Brasil", away_name="Argentina") == "Argentina"
+    )
+    assert winner_label(WinnerSelection.DRAW, home_name="Brasil", away_name="Argentina") == "Empate"
+
+
+def test_winner_label_falls_back_to_generic_without_names() -> None:
+    assert winner_label(WinnerSelection.HOME) == "Mandante"
+    assert winner_label(WinnerSelection.AWAY) == "Visitante"
+    assert winner_label(WinnerSelection.DRAW) == "Empate"
+
+
+def test_btts_label_uses_team_names_without_gendered_article() -> None:
+    assert (
+        btts_label(BttsSelection.ONLY_HOME, home_name="Brasil", away_name="França") == "Só Brasil"
+    )
+    assert (
+        btts_label(BttsSelection.ONLY_AWAY, home_name="Brasil", away_name="França") == "Só França"
+    )
+    assert btts_label(BttsSelection.BOTH, home_name="Brasil", away_name="França") == "Sim (ambos)"
+    assert btts_label(BttsSelection.NEITHER, home_name="Brasil", away_name="França") == "Nenhum"
+
+
+def test_btts_label_falls_back_to_generic_without_names() -> None:
+    assert "mandante" in btts_label(BttsSelection.ONLY_HOME).lower()
+    assert "visitante" in btts_label(BttsSelection.ONLY_AWAY).lower()
