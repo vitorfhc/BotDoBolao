@@ -11,14 +11,16 @@ Tests override :func:`_open_session` to point at a temp database.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal
 
 import typer
 from sqlalchemy.orm import Session
 
+from tigrinho.bot.board_cog import Period, build_standing_inputs, compute_standings
 from tigrinho.bot.poll_cog import apply_settlement
-from tigrinho.config import load_settings
+from tigrinho.config import Settings, load_settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
-from tigrinho.db.repositories import GameRepository, PlayerRepository
+from tigrinho.db.repositories import ApiUsageRepository, GameRepository, PlayerRepository
 from tigrinho.providers.base import GameStatus, GoalEvent, MatchResult, Stage
 
 app = typer.Typer(help="TigrinhoDaCopa — CLI administrativa.", no_args_is_help=True)
@@ -26,16 +28,24 @@ games_app = typer.Typer(help="CRUD de jogos.", no_args_is_help=True)
 players_app = typer.Typer(help="CRUD de jogadores.", no_args_is_help=True)
 bets_app = typer.Typer(help="CRUD de apostas.", no_args_is_help=True)
 result_app = typer.Typer(help="Resultado manual e reapuração.", no_args_is_help=True)
+budget_app = typer.Typer(help="Orçamento de requisições da API.", no_args_is_help=True)
+board_app = typer.Typer(help="Recalcular o placar.", no_args_is_help=True)
 app.add_typer(games_app, name="games")
 app.add_typer(players_app, name="players")
 app.add_typer(bets_app, name="bets")
 app.add_typer(result_app, name="result")
+app.add_typer(budget_app, name="budget")
+app.add_typer(board_app, name="board")
+
+
+def _settings() -> Settings:
+    """Load the validated config (overridden in tests)."""
+    return load_settings()
 
 
 def _open_session() -> Session:
     """Open a DB session from the validated config (overridden in tests)."""
-    settings = load_settings()
-    engine = create_db_engine(settings.db_path)
+    engine = create_db_engine(_settings().db_path)
     return create_session_factory(engine)()
 
 
@@ -115,6 +125,40 @@ def result_set(
         typer.echo(f"Apurado: {settled.home_team_name} {home}x{away} {settled.away_team_name}")
         for player_result in settled.players:
             typer.echo(f"  {player_result.player_discord_id}: {player_result.total_points} pt(s)")
+
+
+@budget_app.command("show")
+def budget_show() -> None:
+    """Mostra o uso de requisições da API hoje e quanto resta (COMPLETION.md §7.3)."""
+    settings = _settings()
+    today = _utcnow().astimezone(settings.budget_reset_tzinfo).date()
+    with _open_session() as session:
+        count = ApiUsageRepository(session).get_count(today)
+    remaining = max(0, settings.api_daily_cap - count)
+    typer.echo(
+        f"API hoje ({today.isoformat()}): {count}/{settings.api_daily_cap} — restam {remaining}"
+    )
+
+
+@board_app.command("recalc")
+def board_recalc(
+    periodo: Literal["geral", "semana"] = typer.Option(
+        "geral", "--periodo", help="geral (padrão) ou semana"
+    ),
+) -> None:
+    """Recalcula o placar do zero a partir das apostas apuradas (COMPLETION.md §10, §13)."""
+    settings = _settings()
+    with _open_session() as session:
+        rows = build_standing_inputs(session)
+    standings = compute_standings(rows, period=Period(periodo), tz=settings.tzinfo, now=_utcnow())
+    if not standings:
+        typer.echo("(sem pontos ainda)")
+        return
+    for row in standings:
+        typer.echo(
+            f"{row.rank}\t{row.player_name}\t{row.total_points} pt\t"
+            f"(exatos {row.exact_hits}, acertos {row.correct_bets})"
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint

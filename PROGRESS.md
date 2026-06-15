@@ -109,8 +109,11 @@ operating rules are in `RALPH.md`.
   - [ ] Group 1 finish: `games show`, `bets list`, create/edit/delete (destructive → `--confirm`).
   - [x] Group 2: `result set <fixture_id> <home> <away> [--scorer] [--advancing]` → build MatchResult →
     `apply_settlement` (idempotent re-settle); prints summary; 3 CliRunner tests.
-  - [ ] Group 3: force sync; seed/refresh squads (provider→`SquadRepository`); print API budget counter.
-  - [ ] Group 4: recalc board (`build_standing_inputs`+`compute_standings`) & DB dump.
+  - [x] `budget show` (group 3, counter+remaining) + `board recalc [--periodo]` (group 4, rebuild
+    standings from settled bets); added `_settings`/`_utcnow` seams; 3 CliRunner tests.
+  - [ ] Group 3 rest: `squads seed <team_id>` (provider→`SquadRepository.replace_team`) + `sync run`
+    (force daily sync) — need an async-in-CLI + a `_build_provider(settings, session)` helper.
+  - [ ] Group 4 rest: `db dump` (export tables). Group 1 rest: `games show`, `bets list`, delete.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
 
@@ -270,10 +273,13 @@ operating rules are in `RALPH.md`.
   entry. 4 CliRunner tests. Dep: `typer`.
 - **Iter 36 (M9 group 2):** `result set` (manual result + idempotent re-settle via apply_settlement).
   3 CliRunner tests. NB: cli imports apply_settlement from bot.poll_cog (pulls discord; fine).
-- **Next:** M9 group 3 — **force sync & cache ops**: `sync run` (build a fake/real provider for the
-  session + `collect_sync_messages`, print counts — but careful: real provider needs budget/httpx;
-  for CLI use the same provider_factory pattern as cogs, or a simpler `sync` that calls
-  `collect_sync_messages` with a provider built from config). `squads seed <team_id>` (provider.get_squad
-  → `SquadRepository.replace_team`). `budget show` (today's `ApiUsageRepository.get_count` + remaining).
-  Then group 4 (recalc board, db dump) + group 1 finish (show/create/delete). Keep thin; CliRunner tests.
-  Consider a shared `_build_provider(session, settings)` for CLI+cogs. Then M9 done → M10 deploy.
+- **Iter 37 (M9 budget show + board recalc):** DB-only commands; added `_settings`/`_utcnow` seams
+  (refactored `_open_session` to use `_settings`). 3 CliRunner tests.
+- **Next:** M9 group 3 cache/sync — add a shared `_build_provider(settings, session) -> FootballProvider`
+  (fake if provider_mode=fake, else ApiFootballProvider with RequestBudget(ApiUsageRepository(session))+
+  httpx client) usable by CLI **and** the M10 composition root. Then `squads seed <team_id>` (asyncio.run
+  provider.get_squad → SquadRepository.replace_team; Typer cmd is sync, runs the coro) and `sync run`
+  (asyncio.run collect_sync_messages; print counts). Test `_build_provider` (fake path) + squads seed
+  (FakeProvider via seam). Then group-1 reads (`games show`, `bets list`) + `db dump` → **M9 done → M10
+  deploy** (Dockerfile, compose, entrypoint `alembic upgrade head`, .env.example, config.example.yaml,
+  full README §15.1, CLAUDE.md, + the bot composition root wiring all cogs).
