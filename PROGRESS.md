@@ -5,10 +5,10 @@ items and append notes/blockers below. The authoritative spec is `COMPLETION.md`
 operating rules are in `RALPH.md`.
 
 ## Milestones (do in order, one small step per iteration)
-- [ ] **M0 — Scaffold:** `pyproject.toml`, ruff/mypy/pytest config, package layout, `config.py` (`.env` + `config.yaml` loading), `logging.py`. Gates green on an empty app.
+- [x] **M0 — Scaffold:** `pyproject.toml`, ruff/mypy/pytest config, package layout, `config.py` (`.env` + `config.yaml` loading), `logging.py`. Gates green on an empty app.
   - [x] Project scaffold: `pyproject.toml` (uv project), ruff + mypy(strict) + pytest config, package layout (`tigrinho/` + `db`/`providers`/`domain`/`bot` subpackages), `.gitignore`, smoke test — all 4 gates green.
   - [x] `config.py` — `Settings` (pydantic-settings 2.14.1): `.env` secrets + `config.yaml` via `YamlConfigSettingsSource`; env-over-yaml; `CONFIG_PATH`; fail-fast `ConfigError`; 12 tests.
-  - [ ] `logging.py` (structlog setup).
+  - [x] `logging.py` — structlog 26.1.0 to stdout, JSON (default) or console renderer, level filtering; 5 tests.
 - [ ] **M1 — Data layer:** ORM models, Alembic initial migration, repositories + tests.
 - [ ] **M2 — Provider:** value objects + `FootballProvider` Protocol, `FakeProvider`, `ApiFootballProvider`, `RequestBudget` (hard-stop at cap) + tests.
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
@@ -39,5 +39,15 @@ operating rules are in `RALPH.md`.
   **mypy:** enabled `pydantic.mypy` plugin so a plain `Settings()` type-checks under `--strict`
   (the plugin special-cases `BaseSettings` source-population) — avoids an obscure `**{}` unpack and
   needs no `# type: ignore`.
-- **Next:** finish M0 — add `logging.py` (structlog). Ground structlog config API first
-  (processors, `configure`, JSON vs console renderer, stdlib integration).
+- **Iter 3 (M0 `logging.py`, M0 DONE):** Grounded structlog 26.1.0. `configure_logging(level, log_format)`
+  sets a global structlog config → stdout via `PrintLoggerFactory`: processors
+  `merge_contextvars, add_log_level, TimeStamper(iso,utc), StackInfoRenderer`, then per format
+  `format_exc_info + JSONRenderer` (JSON) or `dev.set_exc_info + dev.ConsoleRenderer` (console);
+  `wrapper_class=make_filtering_bound_logger(level_int)` for cheap level filtering.
+  `get_logger()` returns `FilteringBoundLogger` (cast — `structlog.get_logger` is annotated `Any`;
+  cast avoids `warn_return_any`, no `# type: ignore`). Tests capture fd output (`capfd`) and
+  `structlog.reset_defaults()` between tests. Module named `tigrinho/logging.py`; `import logging`
+  inside it resolves to stdlib (absolute imports) — verified by passing tests. Dep added: `structlog`.
+- **Next:** M1 — Data layer. Ground SQLAlchemy 2.0 typed ORM (`Mapped`/`mapped_column`, `DeclarativeBase`)
+  + Alembic before coding. Start small: engine/session factory + first ORM model(s) + a repo + tests
+  (one focused slice per iteration, not all of M1 at once).
