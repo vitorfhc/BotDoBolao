@@ -63,7 +63,11 @@ class Fixture:
 
 @dataclass(frozen=True, slots=True)
 class MatchResult:
-    """Live or final result. Scores are the **90-minute** regulation result (COMPLETION.md §7.2).
+    """Live or final result. ``home_goals_90``/``away_goals_90`` are the **90-minute** regulation
+    result (``score.fulltime``), used by settlement (COMPLETION.md §7.2).
+    ``home_goals``/``away_goals`` are the **current/live aggregate** score (API top-level
+    ``goals`` field), used for goal notifications; they default to ``None`` for
+    providers/fixtures that don't supply them.
 
     ``goals`` is ordered by minute ascending. ``advancing_team_id`` is set only for knockout
     fixtures (the side that progresses, derived from extra time / penalties).
@@ -76,6 +80,8 @@ class MatchResult:
     away_goals_90: int | None
     goals: tuple[GoalEvent, ...]
     advancing_team_id: int | None
+    home_goals: int | None = None
+    away_goals: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

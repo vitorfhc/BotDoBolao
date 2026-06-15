@@ -141,6 +141,33 @@ def test_parse_match_result_group_no_advancing() -> None:
     assert result.home_goals_90 == 1
 
 
+def test_parse_match_result_includes_live_score() -> None:
+    # The top-level `goals` object is the current/live aggregate score (API `goals.{home,away}`).
+    result = parse_match_result(_KNOCKOUT_PENALTIES)
+    assert result.home_goals == 1
+    assert result.away_goals == 1
+
+
+def test_parse_match_result_live_score_present_while_fulltime_null() -> None:
+    # In-play fixture: `score.fulltime` is null, but `goals` carries the live score.
+    item: dict[str, Any] = {
+        "fixture": {"id": 2, "date": "2026-06-15T16:00:00-03:00", "status": {"short": "1H"}},
+        "league": {"round": "Group A - 1"},
+        "teams": {
+            "home": {"id": 10, "name": "Brasil"},
+            "away": {"id": 20, "name": "Argentina"},
+        },
+        "goals": {"home": 1, "away": 0},
+        "score": {"fulltime": {"home": None, "away": None}},
+    }
+    result = parse_match_result(item)
+    assert result.status is GameStatus.LIVE
+    assert result.home_goals_90 is None  # regulation result not final yet
+    assert result.away_goals_90 is None
+    assert result.home_goals == 1  # live score available
+    assert result.away_goals == 0
+
+
 _EVENTS: list[dict[str, Any]] = [
     {
         "time": {"elapsed": 10, "extra": None},

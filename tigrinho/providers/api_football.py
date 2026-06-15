@@ -118,6 +118,7 @@ def parse_match_result(
     fixture = item["fixture"]
     teams = item["teams"]
     fulltime = item["score"].get("fulltime") or {}
+    live = item.get("goals") or {}
     home, away = teams["home"], teams["away"]
     advancing: int | None = None
     if home.get("winner") is True:
@@ -132,6 +133,8 @@ def parse_match_result(
         away_goals_90=_opt_int(fulltime.get("away")),
         goals=goals,
         advancing_team_id=advancing,
+        home_goals=_opt_int(live.get("home")),
+        away_goals=_opt_int(live.get("away")),
     )
 
 
