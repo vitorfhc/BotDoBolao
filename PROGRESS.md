@@ -85,6 +85,13 @@ operating rules are in `RALPH.md`.
     `SubscribeCog` (`/inscrever`/`/sair`: member role add/remove, ephemeral, `discord.Forbidden`→pt-BR);
     grounded vs discord.py role ops; 5 tests.
 - [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
+  - [x] `bot/poll_cog.py` core (discord-free): `apply_settlement` (grade finished game's bets via
+    `settle_game`/`match_facts_from_result`, set is_correct/points/settled_at + game status/scores/
+    advancing/first_scorer_player_id/settled_at; idempotent; returns `SettledGame`) + `render_results_message`
+    (90' score, first scorer, each participant mentioned w/ points + breakdown, §8.3); 5 tests.
+  - [ ] `PollCog` — `tasks.loop(minutes=poll_interval)`: active games (none → no API call) →
+    `get_live_results` via provider → settle newly-FINISHED (fetch `get_match_result` for goal timeline)
+    → post results to announce channel → stuck-game admin alert past `match_window_hours`.
 - [ ] **M8 — Board cog:** `/placar geral|semana` with tie-breaks.
 - [ ] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
@@ -229,12 +236,13 @@ operating rules are in `RALPH.md`.
 - **Iter 29 (M6 delete control, M6 DONE):** `build_open_bet_choices` + `build_delete_view`/`DeleteSelect`
   → `delete_bet`; wired into `/minhas_apostas` (shows a delete Select when there are open bets). 2 tests.
   **M6 complete** (all commands implemented; cogs wired into the composition root at M10).
-- **Next:** M7 — Poll cog (`bot/poll_cog.py`). Reuse domain.settlement. Plan:
-  (a) a pure `settle_finished_games(session, results, *, now) -> list[SettledGameResult]` that, for each
-  FINISHED `MatchResult` of an unsettled active game, builds `MatchFacts`, runs `settle_game` over its
-  bets, writes is_correct/points/settled_at on bets + sets game `settled_at`/scores/first_scorer_player_id,
-  and returns per-game data for the results message; (b) pure `render_results_message` (final 90' score,
-  first scorer, each participant mentioned with their game points + breakdown — §8.3); (c) `PollCog`
-  (`tasks.loop(minutes=poll_interval)`: if no active games → no API call; else get_live_results via
-  provider → settle finished → post results; stuck-game alert past match_window). **Ground discord.py
-  `tasks.loop(minutes=)`** (already know it). Start with (a)+(b) pure/tested, then the cog.
+- **Iter 30 (M7 settlement core):** `apply_settlement` (DB; reuses domain.settlement; idempotent) +
+  `render_results_message` (pt-BR, §8.3). 5 tests. Discord-free.
+- **Next:** M7 — `PollCog` (the gateway glue). `tasks.loop(minutes=poll_interval_minutes)`: open session
+  → `GameRepository.list_active(now, match_window_hours)`; if none → return (NO API call, §9.2). Else
+  `provider.get_live_results()` (budget-gated, in fake mode just scripted); for each result that is
+  FINISHED and whose game is unsettled → `provider.get_match_result(fid)` (goal timeline) →
+  `apply_settlement` → collect `SettledGame`; commit; post each `render_results_message` to the announce
+  channel (resolve scorer name via SquadRepository); stuck-game: active game past `kickoff+window` still
+  unsettled → admin DM alert (alerts seam). Extract a testable `collect_settlements(session, provider,
+  settings, *, now) -> list[SettledGame]` like sync's collect_*; thin cog over it. Then M7 done → M8 board.
