@@ -10,9 +10,11 @@ unit-tested; the :class:`ReminderCog` (``tasks.loop`` + send) is layered on top.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 
 from tigrinho.db.models import Game
+
+from .sync_planning import format_kickoff_pt
 
 
 def select_due_reminders(games: Sequence[Game], *, now: datetime, lead_minutes: int) -> list[Game]:
@@ -26,3 +28,16 @@ def select_due_reminders(games: Sequence[Game], *, now: datetime, lead_minutes: 
         for game in games
         if game.reminder_sent_at is None and game.kickoff_utc - lead <= now < game.kickoff_utc
     ]
+
+
+def format_reminder_announcement(games: Sequence[Game], *, role_mention: str, tz: tzinfo) -> str:
+    """One combined pt-BR reminder for all due games, pinging the role once (§9.4). No hardcoded
+    lead minutes — the actual lead varies (fire-late), so the header is time-agnostic."""
+    lines = [f"⏰ **Já vai começar!** As apostas fecham no apito inicial. {role_mention}"]
+    lines += [
+        f"• {game.home_team_name} x {game.away_team_name} — "
+        f"{format_kickoff_pt(game.kickoff_utc.astimezone(tz))}"
+        for game in games
+    ]
+    lines.append("Corra para apostar com /apostar! 🐯")
+    return "\n".join(lines)
