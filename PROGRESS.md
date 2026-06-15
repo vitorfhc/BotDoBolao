@@ -118,7 +118,7 @@ operating rules are in `RALPH.md`.
     (destructive→confirm flag, §13); group 4 `db dump` (per-table row counts). 7 tests.
   - Note: record create/edit happens via flows (`sync run` creates games, `result set` edits results,
     Discord auto-creates players/bets); the CLI covers list/show/delete + those admin edits.
-- [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
+- [x] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
   - [x] Composition root: `bootstrap.create_bot(settings)` (engine + session_factory + shared httpx
     client + provider_factory) + `run()`; `TigrinhoBot.__init__` takes the factories; `setup_hook`→
     `_register_cogs` wires Help/Subscribe/Bets/Board/Sync/Poll; `tigrinho/__main__.py` (`python -m tigrinho`); 2 tests.
@@ -130,7 +130,8 @@ operating rules are in `RALPH.md`.
     validates.** 3 structure tests; dev dep `types-PyYAML`.
   - [x] `CLAUDE.md` — grounding rule, secrets/settings split, /ajuda+COMPLETION.md sync rule, gates,
     TDD, provider_mode:fake, module map; content test asserts the required rules.
-  - [ ] `README.md` — full deploy guide (§15.1, 14 sections).
+  - [x] `README.md` — full deploy guide, all 14 §15.1 sections (copy-paste runnable); content test
+    asserts the sections + key steps/commands. **M10 complete.**
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
 
 ## Notes / blockers / decisions
@@ -303,13 +304,12 @@ operating rules are in `RALPH.md`.
   config` validates. 3 tests; dep `types-PyYAML`.
 - **Iter 43 (M10 CLAUDE.md):** Wrote CLAUDE.md (the 3 mandatory rules + principles/gates/module map);
   content test enforces it.
-- **Next:** M10 (e) — **`README.md`**, the full deploy guide (§15.1), all 14 sections in order:
-  Overview, Prerequisites, Create the Discord bot, Discord IDs & role, Get the API-Football key,
-  Configure (`cp .env.example .env` + `cp config.example.yaml config.yaml`), Run (`docker compose up
-  -d --build`), First-run (seed squads via CLI, force sync), Player guide (all 7 commands), Admin CLI
-  (each group w/ examples), Operations (/data volume + backup, logs, alerts, API-cap behavior, redeploy),
-  Troubleshooting (role perms/hierarchy, slash cmds not appearing, wrong league id/season, API cap, tz),
-  Development (provider_mode: fake; ruff/mypy/pytest), Disclaimer (no real money, not FIFA-affiliated).
-  Copy-paste runnable, no-prior-context. A content test can assert the 14 section headers exist. Then
-  **M10 done → M11**: end-to-end `provider_mode: fake` smoke test (sync→bet→settle→scoreboard, no
-  network/secrets), budget enforcement end-to-end, coverage/edge-case sweep.
+- **Iter 44 (M10 README, M10 DONE):** Full README §15.1 (14 sections) + content test. **M10 complete.**
+- **Next:** M11 — Hardening. Key deliverable (also a RALPH completion criterion): an **end-to-end
+  `provider_mode: fake` smoke test** that, with **no network and no secrets**, exercises
+  **sync → place bet → settle → scoreboard** through the real seams (FakeProvider + a temp SQLite +
+  `collect_sync_messages` / `place_bet` / `collect_settlements` (or `apply_settlement`) /
+  `build_standing_inputs`+`compute_standings`), asserting points land on the board. Then: budget
+  enforcement end-to-end (BudgetExceeded path), an edge-case sweep / coverage check, and a final
+  full-gates + `docker compose config` pass. When all M0–M11 boxes are checked and gates+compose+e2e
+  green → output the promise.
