@@ -135,8 +135,9 @@ operating rules are in `RALPH.md`.
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
   - [x] End-to-end `provider_mode: fake` smoke test (`test_e2e_fake`): sync → place bets → settle →
     scoreboard through the real seams, no network/secrets; asserts points land on the board. ✓ RALPH criterion.
-  - [ ] Budget-enforcement end-to-end test (RequestBudget at cap → BudgetExceeded propagates through a
-    cog seam → sync/poll skip; counter not consumed when over cap).
+  - [x] Budget-enforcement e2e (`test_budget_cap_blocks_http_in_poll`): `ApiFootballProvider` (mock
+    httpx) with budget at cap, driven through `collect_settlements` → `BudgetExceeded` and the HTTP
+    handler is never called.
   - [ ] Edge-case/coverage sweep (run `pytest --cov` on domain; confirm scoring/settlement ~100%); add
     any missing edge tests. Final full gates + `docker compose config` pass → then the promise.
 
@@ -313,9 +314,11 @@ operating rules are in `RALPH.md`.
 - **Iter 44 (M10 README, M10 DONE):** Full README §15.1 (14 sections) + content test. **M10 complete.**
 - **Iter 45 (M11 e2e smoke test):** `test_e2e_fake` — full sync→bet→settle→scoreboard, offline,
   asserts {100:7, 200:0} on the board. RALPH criterion met.
-- **Next:** M11 — budget-enforcement end-to-end test: build an `ApiFootballProvider` (mock httpx) with a
-  `RequestBudget` already at cap (seed `ApiUsageRepository`), drive it through `collect_settlements`/
-  `collect_sync_messages` (active games present) and assert `BudgetExceeded` propagates (cog would skip)
-  and the HTTP handler is never called. Then run `pytest --cov=tigrinho.domain` to confirm scoring/
-  settlement ~100% (add edge tests if gaps), do a final `ruff/format/mypy/pytest` + `docker compose
-  config` pass, check off M11, and output `<promise>TIGRINHO COMPLETE</promise>` once all are green.
+- **Iter 46 (M11 budget e2e):** `test_budget_cap_blocks_http_in_poll` — at cap, the poll path raises
+  `BudgetExceeded` and makes no HTTP call. 298 tests green.
+- **Next (final M11):** add `pytest-cov` (dev) and run `uv run pytest --cov=tigrinho/domain
+  --cov-branch --cov-report=term-missing`; confirm `scoring.py`/`settlement.py` ~100% line+branch (§2),
+  add edge tests for any gaps. Then the **final completion check**: re-read RALPH.md §completion;
+  run all 4 gates + `docker compose config` + the e2e/budget-e2e tests; verify README/.env.example/
+  config.example.yaml/CLAUDE.md exist and every M0–M11 box is checked. If ALL true, check M11 and
+  output `<promise>TIGRINHO COMPLETE</promise>`.
