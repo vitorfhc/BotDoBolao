@@ -11,7 +11,10 @@ operating rules are in `RALPH.md`.
   - [x] `logging.py` — structlog 26.1.0 to stdout, JSON (default) or console renderer, level filtering; 5 tests.
 - [ ] **M1 — Data layer:** ORM models, Alembic initial migration, repositories + tests.
   - [x] ORM models + engine: `db/types.py` (`TZDateTime`), `db/models.py` (Base + Player/Game/Bet/SquadPlayer/ApiUsage), `db/engine.py` (engine + session factory, SQLite FK pragma); 7 tests (schema, tz round-trip, unique + FK constraints).
-  - [ ] `db/repositories.py` — typed CRUD repos (players, games, bets, squads, api_usage) + tests.
+  - [~] `db/repositories.py` — core repos done: `PlayerRepository` (get/get_or_create/list_all),
+    `GameRepository` (get/add/list_all/list_open/list_active), `BetRepository`
+    (get/get_for/upsert/list_for_player/list_for_game/delete); 9 tests. Remaining: `SquadRepository`,
+    `ApiUsageRepository`.
   - [ ] Alembic initial migration + entrypoint `upgrade head` (verify schema matches models).
 - [ ] **M2 — Provider:** value objects + `FootballProvider` Protocol, `FakeProvider`, `ApiFootballProvider`, `RequestBudget` (hard-stop at cap) + tests.
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
@@ -59,5 +62,10 @@ operating rules are in `RALPH.md`.
   FK enforcement via a `connect` PRAGMA listener (SQLite defaults FKs off). enum-like columns stored as
   TEXT (domain layer gives meaning). Dep added: `sqlalchemy`. Ruff nits fixed: `datetime.UTC` (UP017),
   `type_annotation_map` moved to a module constant (RUF012).
-- **Next:** M1 — `db/repositories.py` (typed CRUD: players/games/bets/squads/api_usage) + tests.
-  No new external lib to ground (SQLAlchemy already grounded); use `select()`/`session.get()` patterns.
+- **Iter 5 (M1 core repos):** Added `PlayerRepository`/`GameRepository`/`BetRepository`. Design: repos
+  wrap one `Session`, `flush` (never `commit` — caller owns the transaction), and take explicit `now`
+  timestamps (no hidden clock → deterministic). `list_active` avoids SQL interval math via
+  `kickoff >= now - window`. `upsert` enforces edit-in-place for the one-bet-per-category rule.
+  Aware-UTC `now` binds correctly through `TZDateTime`. 9 tests.
+- **Next:** M1 — `SquadRepository` + `ApiUsageRepository` (+ tests), then the Alembic initial migration.
+  Squad: get_by_team/upsert/bulk seed. ApiUsage: get/increment for a budget_date (pairs with M2 budget).
