@@ -220,21 +220,6 @@ async def test_get_match_result_missing_fixture_raises(usage: ApiUsageRepository
         await provider.get_match_result(404)
 
 
-async def test_get_squad(usage: ApiUsageRepository) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        squads = [
-            {
-                "team": {"id": 10, "name": "BRA"},
-                "players": [{"id": 7, "name": "Neymar", "position": "Attacker"}],
-            }
-        ]
-        return httpx.Response(200, json=_envelope(squads))
-
-    provider = _provider(usage, handler)
-    squad = await provider.get_squad(10)
-    assert [p.player_id for p in squad] == [7]
-
-
 async def test_api_errors_in_body_raise(usage: ApiUsageRepository) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"errors": {"requests": "limit reached"}, "response": []})

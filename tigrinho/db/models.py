@@ -59,7 +59,6 @@ class Game(Base):
     home_goals_90: Mapped[int | None]
     away_goals_90: Mapped[int | None]
     advancing_team_id: Mapped[int | None]
-    first_scorer_player_id: Mapped[int | None]
     announced_at: Mapped[datetime | None]
     settled_at: Mapped[datetime | None]
 
@@ -87,17 +86,6 @@ class Bet(Base):
 
     game: Mapped[Game] = relationship(back_populates="bets")
     player: Mapped[Player] = relationship(back_populates="bets")
-
-
-class SquadPlayer(Base):
-    """A team's roster entry, used for first-scorer selection (cached, refreshed via CLI)."""
-
-    __tablename__ = "squad_players"
-
-    player_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
-    team_id: Mapped[int]
-    name: Mapped[str]
-    position: Mapped[str | None]
 
 
 class ApiUsage(Base):

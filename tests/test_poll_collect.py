@@ -19,7 +19,6 @@ from tigrinho.providers.base import (
     Fixture,
     GameStatus,
     MatchResult,
-    SquadPlayer,
     Stage,
 )
 from tigrinho.providers.fake import FakeProvider
@@ -62,7 +61,6 @@ def _add_game(session: Session, fid: int, *, kickoff: datetime, settled: datetim
             home_goals_90=None,
             away_goals_90=None,
             advancing_team_id=None,
-            first_scorer_player_id=None,
             announced_at=None,
             settled_at=settled,
         )
@@ -89,9 +87,6 @@ class _ExplodingProvider:
         raise AssertionError("get_recent_results must not run when there are no active games")
 
     async def get_match_result(self, fixture_id: int) -> MatchResult:
-        raise AssertionError("should not be called")
-
-    async def get_squad(self, team_id: int) -> list[SquadPlayer]:
         raise AssertionError("should not be called")
 
 

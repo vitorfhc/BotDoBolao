@@ -8,13 +8,12 @@ clock) so callers stay deterministic and testable.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import ApiUsage, Bet, Game, Player, SquadPlayer
+from .models import ApiUsage, Bet, Game, Player
 
 
 class PlayerRepository:
@@ -167,36 +166,6 @@ class BetRepository:
 
     def delete(self, bet: Bet) -> None:
         self.session.delete(bet)
-
-
-class SquadRepository:
-    """Cached team rosters for first-scorer selection; seeded/refreshed via the CLI (§13)."""
-
-    def __init__(self, session: Session) -> None:
-        self.session = session
-
-    def get(self, player_id: int) -> SquadPlayer | None:
-        return self.session.get(SquadPlayer, player_id)
-
-    def list_for_team(self, team_id: int) -> list[SquadPlayer]:
-        stmt = select(SquadPlayer).where(SquadPlayer.team_id == team_id).order_by(SquadPlayer.name)
-        return list(self.session.scalars(stmt))
-
-    def replace_team(self, team_id: int, players: Iterable[SquadPlayer]) -> int:
-        """Replace a team's cached roster (drop existing rows, insert the given ones)."""
-        for existing in self.list_for_team(team_id):
-            self.session.delete(existing)
-        self.session.flush()  # deletes land before inserts so reused player ids don't collide
-        count = 0
-        for player in players:
-            self.session.add(player)
-            count += 1
-        self.session.flush()
-        return count
-
-    def count(self) -> int:
-        total = self.session.scalar(select(func.count()).select_from(SquadPlayer))
-        return total or 0
 
 
 class ApiUsageRepository:

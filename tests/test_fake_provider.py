@@ -11,7 +11,6 @@ from tigrinho.providers.base import (
     FootballProvider,
     GameStatus,
     MatchResult,
-    SquadPlayer,
     Stage,
 )
 from tigrinho.providers.fake import FakeProvider
@@ -67,13 +66,6 @@ async def test_get_match_result_missing_raises() -> None:
         await provider.get_match_result(99)
 
 
-async def test_get_squad_by_team_and_unknown_is_empty() -> None:
-    neymar = SquadPlayer(player_id=7, team_id=10, name="Neymar", position="FW")
-    provider = FakeProvider(squads={10: [neymar]})
-    assert [s.player_id for s in await provider.get_squad(10)] == [7]
-    assert await provider.get_squad(999) == []
-
-
 async def test_setters_update_outputs() -> None:
     provider = FakeProvider()
     provider.set_recent_results([_result(1)])
@@ -82,8 +74,6 @@ async def test_setters_update_outputs() -> None:
     assert (await provider.get_match_result(2)).fixture_id == 2
     provider.set_fixtures([_fixture(3)])
     assert [f.fixture_id for f in await provider.get_fixtures(1)] == [3]
-    provider.set_squad(20, [SquadPlayer(player_id=8, team_id=20, name="Messi", position=None)])
-    assert [s.player_id for s in await provider.get_squad(20)] == [8]
 
 
 async def test_returned_lists_are_copies() -> None:

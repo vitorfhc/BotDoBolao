@@ -65,16 +65,6 @@ class MatchResult:
     advancing_team_id: int | None
 
 
-@dataclass(frozen=True, slots=True)
-class SquadPlayer:
-    """A roster entry for first-scorer selection (cached). Distinct from the ORM row."""
-
-    player_id: int
-    team_id: int
-    name: str
-    position: str | None
-
-
 @runtime_checkable
 class FootballProvider(Protocol):
     """Async football data source. Implemented by ``ApiFootballProvider`` and ``FakeProvider``."""
@@ -90,9 +80,5 @@ class FootballProvider(Protocol):
         ...
 
     async def get_match_result(self, fixture_id: int) -> MatchResult:
-        """Final result and goal timeline for a single fixture."""
-        ...
-
-    async def get_squad(self, team_id: int) -> list[SquadPlayer]:
-        """A team's roster (used for first-scorer selection; cached)."""
+        """Final 90' result for a single fixture."""
         ...

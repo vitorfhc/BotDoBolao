@@ -15,7 +15,6 @@ from tigrinho.providers.api_football import (
     parse_fixture,
     parse_kickoff,
     parse_match_result,
-    parse_squad_players,
     parse_stage,
 )
 from tigrinho.providers.base import GameStatus, Stage
@@ -137,20 +136,3 @@ def test_parse_match_result_group_no_advancing() -> None:
     result = parse_match_result(item)
     assert result.advancing_team_id is None
     assert result.home_goals_90 == 1
-
-
-def test_parse_squad_players() -> None:
-    response: list[dict[str, Any]] = [
-        {
-            "team": {"id": 10, "name": "Brasil"},
-            "players": [
-                {"id": 7, "name": "Neymar", "position": "Attacker"},
-                {"id": 1, "name": "Alisson", "position": "Goalkeeper"},
-            ],
-        }
-    ]
-    players = parse_squad_players(response)
-    assert len(players) == 2
-    assert players[0].player_id == 7
-    assert players[0].team_id == 10
-    assert players[0].position == "Attacker"

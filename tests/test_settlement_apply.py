@@ -56,7 +56,6 @@ def _seed_game_and_bets(session: Session) -> None:
             home_goals_90=None,
             away_goals_90=None,
             advancing_team_id=None,
-            first_scorer_player_id=None,
             announced_at=None,
             settled_at=None,
         )

@@ -8,19 +8,18 @@ Field paths, status codes, and endpoints verified against the live API-Football 
 - Base ``https://v3.football.api-sports.io``; auth header ``x-apisports-key``.
 - ``GET /fixtures`` -> ``response[].{fixture.{id,date,status.short}, league.round,
   teams.{home,away}.{id,name,winner}, score.{fulltime,extratime,penalty}.{home,away}}``.
-- ``GET /players/squads`` -> ``response[].{team.id, players[].{id,name,position}}``.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 
-from .base import Fixture, GameStatus, MatchResult, SquadPlayer, Stage
+from .base import Fixture, GameStatus, MatchResult, Stage
 from .budget import RequestBudget
 from .retry import retry_async
 
@@ -55,10 +54,6 @@ _KNOCKOUT_MARKERS = ("round of", "quarter", "semi", "final", "3rd place", "play-
 
 def _opt_int(value: Any) -> int | None:
     return None if value is None else int(value)
-
-
-def _opt_str(value: Any) -> str | None:
-    return None if value is None else str(value)
 
 
 def normalize_status(short: str) -> GameStatus:
@@ -122,23 +117,6 @@ def parse_match_result(item: Mapping[str, Any]) -> MatchResult:
         away_goals_90=_opt_int(fulltime.get("away")),
         advancing_team_id=advancing,
     )
-
-
-def parse_squad_players(response: Sequence[Mapping[str, Any]]) -> list[SquadPlayer]:
-    """Map a ``/players/squads`` response (one entry per team) to :class:`SquadPlayer` rows."""
-    players: list[SquadPlayer] = []
-    for entry in response:
-        team_id = int(entry["team"]["id"])
-        for player in entry.get("players") or []:
-            players.append(
-                SquadPlayer(
-                    player_id=int(player["id"]),
-                    team_id=team_id,
-                    name=str(player["name"]),
-                    position=_opt_str(player.get("position")),
-                )
-            )
-    return players
 
 
 def _utcnow() -> datetime:
@@ -280,7 +258,3 @@ class ApiFootballProvider:
         if not fixtures:
             raise LookupError(f"API-Football has no fixture {fixture_id}")
         return parse_match_result(fixtures[0])
-
-    async def get_squad(self, team_id: int) -> list[SquadPlayer]:
-        response = await self._get("/players/squads", {"team": team_id})
-        return parse_squad_players(response)

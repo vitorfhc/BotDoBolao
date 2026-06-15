@@ -75,7 +75,6 @@ def test_board_recalc(open_session: Callable[[], Session]) -> None:
                 home_goals_90=2,
                 away_goals_90=1,
                 advancing_team_id=None,
-                first_scorer_player_id=None,
                 announced_at=None,
                 settled_at=NOW,
             )

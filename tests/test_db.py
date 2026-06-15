@@ -45,7 +45,6 @@ def _make_game(fixture_id: int = 1, kickoff: datetime | None = None) -> Game:
         home_goals_90=None,
         away_goals_90=None,
         advancing_team_id=None,
-        first_scorer_player_id=None,
         announced_at=None,
         settled_at=None,
     )
@@ -76,7 +75,7 @@ def _make_bet(fixture_id: int, player_discord_id: int, category: str, sel: str) 
 
 def test_create_all_builds_all_tables(engine: Engine) -> None:
     tables = set(inspect(engine).get_table_names())
-    assert tables == {"players", "games", "bets", "squad_players", "api_usage"}
+    assert tables == {"players", "games", "bets", "api_usage"}
 
 
 def test_player_and_game_roundtrip(session_factory: sessionmaker[Session]) -> None:

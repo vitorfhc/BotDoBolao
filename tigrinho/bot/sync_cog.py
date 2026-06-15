@@ -67,7 +67,6 @@ def _game_from_fixture(fixture: Fixture, tz: tzinfo) -> Game:
         home_goals_90=None,
         away_goals_90=None,
         advancing_team_id=None,
-        first_scorer_player_id=None,
         announced_at=None,
         settled_at=None,
     )

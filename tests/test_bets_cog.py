@@ -60,7 +60,6 @@ def _add_game(session: Session, fid: int, *, kickoff: datetime, settled: datetim
             home_goals_90=None,
             away_goals_90=None,
             advancing_team_id=None,
-            first_scorer_player_id=None,
             announced_at=None,
             settled_at=settled,
         )

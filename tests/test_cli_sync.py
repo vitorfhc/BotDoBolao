@@ -1,4 +1,4 @@
-"""Tests for CLI force-sync + squad seeding (COMPLETION.md §13 group 3)."""
+"""Tests for CLI force-sync (COMPLETION.md §13 group 3)."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from tigrinho.cli import app
 from tigrinho.config import Settings
 from tigrinho.db.engine import create_db_engine, create_session_factory
 from tigrinho.db.models import Base
-from tigrinho.db.repositories import GameRepository, SquadRepository
-from tigrinho.providers.base import Fixture, GameStatus, SquadPlayer, Stage
+from tigrinho.db.repositories import GameRepository
+from tigrinho.providers.base import Fixture, GameStatus, Stage
 from tigrinho.providers.fake import FakeProvider
 
 NOW = datetime(2026, 6, 15, 12, 0, tzinfo=UTC)
@@ -46,20 +46,6 @@ def open_session(
     monkeypatch.setattr(cli, "_settings", _settings)
     monkeypatch.setattr(cli, "_utcnow", lambda: NOW)
     yield factory
-
-
-def test_squads_seed(open_session: Callable[[], Session], monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = FakeProvider(
-        squads={10: [SquadPlayer(player_id=7, team_id=10, name="Neymar", position="FW")]}
-    )
-    monkeypatch.setattr(cli, "_build_provider", lambda settings, session: fake)
-    result = runner.invoke(app, ["squads", "seed", "10"])
-    assert result.exit_code == 0
-    assert "1" in result.output
-    with open_session() as session:
-        squad = SquadRepository(session).list_for_team(10)
-        assert [p.player_id for p in squad] == [7]
-        assert squad[0].name == "Neymar"
 
 
 def test_sync_run(open_session: Callable[[], Session], monkeypatch: pytest.MonkeyPatch) -> None:

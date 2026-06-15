@@ -12,7 +12,6 @@ from tigrinho.providers.base import (
     FootballProvider,
     GameStatus,
     MatchResult,
-    SquadPlayer,
     Stage,
 )
 
@@ -51,11 +50,9 @@ def test_value_objects_construct_with_expected_fields() -> None:
         kickoff_utc=KICKOFF,
         status=GameStatus.SCHEDULED,
     )
-    squad = SquadPlayer(player_id=7, team_id=10, name="Neymar", position="FW")
 
     assert result.home_goals_90 == 2
     assert fixture.home_team_name == "Brasil"
-    assert squad.position == "FW"
 
 
 def test_value_objects_are_frozen() -> None:
@@ -75,9 +72,9 @@ def test_value_objects_are_frozen() -> None:
 
 
 def test_value_objects_support_equality() -> None:
-    a = SquadPlayer(player_id=7, team_id=10, name="Neymar", position="FW")
-    b = SquadPlayer(player_id=7, team_id=10, name="Neymar", position="FW")
-    c = SquadPlayer(player_id=8, team_id=10, name="Vini", position="FW")
+    a = MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, None)
+    b = MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 2, 1, None)
+    c = MatchResult(1, GameStatus.FINISHED, Stage.GROUP, 0, 0, None)
     assert a == b
     assert a != c
 
@@ -105,9 +102,6 @@ class _ConformingProvider:
 
     async def get_match_result(self, fixture_id: int) -> MatchResult:
         raise NotImplementedError
-
-    async def get_squad(self, team_id: int) -> list[SquadPlayer]:
-        return []
 
 
 def test_protocol_is_satisfied_by_conforming_class() -> None:

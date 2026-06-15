@@ -39,7 +39,6 @@ def _game(fixture_id: int, kickoff: datetime, *, settled: datetime | None = None
         home_goals_90=None,
         away_goals_90=None,
         advancing_team_id=None,
-        first_scorer_player_id=None,
         announced_at=None,
         settled_at=settled,
     )
