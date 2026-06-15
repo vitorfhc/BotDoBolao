@@ -128,7 +128,8 @@ operating rules are in `RALPH.md`.
     (`alembic upgrade head` → `python -m tigrinho`) + `docker-compose.yml` (bot service, env_file,
     `tigrinho-data:/data` volume, `config.yaml:ro` bind-mount, `CONFIG_PATH`). **`docker compose config`
     validates.** 3 structure tests; dev dep `types-PyYAML`.
-  - [ ] `CLAUDE.md` (grounding rule, secrets/settings split, /ajuda-in-sync maintenance rule).
+  - [x] `CLAUDE.md` — grounding rule, secrets/settings split, /ajuda+COMPLETION.md sync rule, gates,
+    TDD, provider_mode:fake, module map; content test asserts the required rules.
   - [ ] `README.md` — full deploy guide (§15.1, 14 sections).
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
 
@@ -300,10 +301,15 @@ operating rules are in `RALPH.md`.
 - **Iter 41 (M10 examples):** `.env.example` + `config.example.yaml` (§4); test loads example.
 - **Iter 42 (M10 Docker/compose):** Dockerfile + entrypoint + docker-compose.yml; `docker compose
   config` validates. 3 tests; dep `types-PyYAML`.
-- **Next:** M10 (d) — **`CLAUDE.md`** (project memory for future agents). MUST encode (§11, §2):
-  the grounding rule (web-search official docs before using/changing any external API); the
-  secrets-in-`.env` / settings-in-`config.yaml` split; and the maintenance rule that any change to
-  commands/categories/scoring/grading MUST update `/ajuda` text (domain/text_pt) AND COMPLETION.md
-  together. Also: the gates command (`uv run ruff/mypy/pytest`), TDD, `provider_mode: fake` for dev/tests,
-  module map, run via `python -m tigrinho` / CLI via `python -m tigrinho.cli`. No test (doc). Then (e)
-  README §15.1 (the big one) → M10 done → M11 hardening (end-to-end fake smoke test, coverage, edge cases).
+- **Iter 43 (M10 CLAUDE.md):** Wrote CLAUDE.md (the 3 mandatory rules + principles/gates/module map);
+  content test enforces it.
+- **Next:** M10 (e) — **`README.md`**, the full deploy guide (§15.1), all 14 sections in order:
+  Overview, Prerequisites, Create the Discord bot, Discord IDs & role, Get the API-Football key,
+  Configure (`cp .env.example .env` + `cp config.example.yaml config.yaml`), Run (`docker compose up
+  -d --build`), First-run (seed squads via CLI, force sync), Player guide (all 7 commands), Admin CLI
+  (each group w/ examples), Operations (/data volume + backup, logs, alerts, API-cap behavior, redeploy),
+  Troubleshooting (role perms/hierarchy, slash cmds not appearing, wrong league id/season, API cap, tz),
+  Development (provider_mode: fake; ruff/mypy/pytest), Disclaimer (no real money, not FIFA-affiliated).
+  Copy-paste runnable, no-prior-context. A content test can assert the 14 section headers exist. Then
+  **M10 done → M11**: end-to-end `provider_mode: fake` smoke test (sync→bet→settle→scoreboard, no
+  network/secrets), budget enforcement end-to-end, coverage/edge-case sweep.
