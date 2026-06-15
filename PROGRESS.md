@@ -104,6 +104,12 @@ operating rules are in `RALPH.md`.
     `BoardCog` `/placar [periodo: geral|semana]` (Literal choices; public reply); 2 tests.
   - Note: BoardCog wires into the bot composition root at M10.
 - [ ] **M9 — Admin CLI:** CRUD, manual result & re-settle, force sync & cache ops, recalc board & DB dump.
+  - [x] `tigrinho/cli.py` scaffold (Typer app + `games`/`players`/`bets` sub-apps, `__main__` entry,
+    `_open_session` seam) + group 1 read: `games list`, `players list`; 4 CliRunner tests. Dep: `typer`.
+  - [ ] Group 1 finish: `games show`, `bets list`, create/edit/delete (destructive → `--confirm`).
+  - [ ] Group 2: manual result & re-settle (set 90' score + first scorer → `apply_settlement`, idempotent).
+  - [ ] Group 3: force sync; seed/refresh squads (provider→`SquadRepository`); print API budget counter.
+  - [ ] Group 4: recalc board (`build_standing_inputs`+`compute_standings`) & DB dump.
 - [ ] **M10 — Deploy:** Dockerfile, compose, volume + config bind-mount, entrypoint migrations, `.env.example`, `config.example.yaml`, full README (§15.1), `CLAUDE.md`.
 - [ ] **M11 — Hardening:** budget enforcement end-to-end, edge cases, coverage, `provider_mode: fake` smoke test.
 
@@ -258,11 +264,11 @@ operating rules are in `RALPH.md`.
   StandingInput/StandingRow); §10 tie-breaks + weekly filter; 8 tests. Discord-free.
 - **Iter 34 (M8 board cog, M8 DONE):** `build_standing_inputs` (settled bets join player+game) +
   `BoardCog` `/placar` (Literal[geral|semana] choices, public reply). 2 tests. **M8 complete.**
-- **Next:** M9 — Admin CLI (`tigrinho/cli.py`, Typer). **Ground Typer first** (web search: `typer.Typer()`,
-  command groups/subcommands, `typer.Option`/`Argument`, `--confirm` flag, table output, exit codes;
-  run via `python -m tigrinho.cli`). Four capability groups (§13): (1) CRUD games/bets/players
-  (list/show/create/edit/delete); (2) manual result & re-settle (set 90' score + first scorer →
-  apply_settlement, idempotent); (3) force sync & cache ops (trigger sync; seed/refresh squads via
-  provider; print API budget counter); (4) recalc board (rebuild from settled bets via compute_standings)
-  & DB dump. Add `typer` dep. Destructive cmds require a confirm flag. Keep command bodies thin over
-  repos/domain; readable table output. Build incrementally (one group per iteration). Then M10 deploy.
+- **Iter 35 (M9 CLI scaffold + group 1 reads):** Grounded Typer 0.26.7. `cli.py` Typer app + sub-apps +
+  `_open_session` seam (tests monkeypatch it) + `games list`/`players list`; `python -m tigrinho.cli`
+  entry. 4 CliRunner tests. Dep: `typer`.
+- **Next:** M9 group 2 — **manual result & re-settle** (most valuable next): `cli.py` `result set
+  <fixture_id> <home> <away> [--scorer <player_id>] [--advancing <team_id>]` → build a `MatchResult` →
+  `apply_settlement` → commit; idempotent (overwrites); print the SettledGame summary. Testable via
+  CliRunner over a temp DB (seed game+bets, run, assert graded). Then groups 1-finish/3/4 over following
+  iterations. Reuse domain (MatchResult/apply_settlement). Keep bodies thin; CliRunner tests each.
