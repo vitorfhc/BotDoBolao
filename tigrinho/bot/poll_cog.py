@@ -469,13 +469,14 @@ class PollCog(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def run_poll(self) -> None:
-        """One poll cycle: settle finished games (throttling rechecks of overdue ones), post
-        results, and alert the admin about games that outlived the settlement grace (§9.2)."""
+        """One poll cycle: settle finished games, announce kickoffs and goals for live games
+        (throttling rechecks of overdue ones), and alert the admin about games that outlived the
+        settlement grace (§9.2/§9.3)."""
         now = self._clock()
         with self.session_factory() as session:
             games = GameRepository(session)
             pollable = games.list_active(now, self.settings.settle_grace_hours)
-            results: list[tuple[SettledGame, str | None]] = []
+            outcome = PollOutcome(settled=[], kickoffs=[], goals=[])
             if should_poll(
                 pollable_kickoffs=[game.kickoff_utc for game in pollable],
                 now=now,
@@ -486,27 +487,47 @@ class PollCog(commands.Cog):
                 self._last_poll = now
                 provider = self.provider_factory(session)
                 outcome = await collect_poll_outcome(session, provider, self.settings, now=now)
-                settled = outcome.settled
-                results = [
-                    (game, resolve_scorer_name(session, game.first_scorer_player_id))
-                    for game in settled
-                ]
+            results = [
+                (game, resolve_scorer_name(session, game.first_scorer_player_id))
+                for game in outcome.settled
+            ]
+            live_messages = [
+                render_kickoff_message(kickoff.home_team_name, kickoff.away_team_name)
+                for kickoff in outcome.kickoffs
+            ] + [render_goal_message(goal.announcement) for goal in outcome.goals]
             stuck = [
                 (game.fixture_id, f"{game.home_team_name} x {game.away_team_name}")
                 for game in games.list_stuck(now, self.settings.settle_grace_hours)
             ]
             session.commit()
+        await self._post_plain(live_messages)
         await self._post_results(results)
         await self._alert_stuck(stuck)
 
-    async def _post_results(self, results: list[tuple[SettledGame, str | None]]) -> None:
-        if not results:
-            return
+    def _get_announce_channel(self) -> discord.abc.Messageable | None:
         channel = self.bot.get_channel(self.settings.announce_channel_id)
         if not isinstance(channel, discord.abc.Messageable):
             log.warning(
                 "announce_channel_unavailable", channel_id=self.settings.announce_channel_id
             )
+            return None
+        return channel
+
+    async def _post_plain(self, messages: list[str]) -> None:
+        """Post kickoff/goal messages to the announce channel with no pings."""
+        if not messages:
+            return
+        channel = self._get_announce_channel()
+        if channel is None:
+            return
+        for message in messages:
+            await channel.send(message, allowed_mentions=discord.AllowedMentions.none())
+
+    async def _post_results(self, results: list[tuple[SettledGame, str | None]]) -> None:
+        if not results:
+            return
+        channel = self._get_announce_channel()
+        if channel is None:
             return
         allowed = discord.AllowedMentions(users=True)
         for settled, scorer_name in results:

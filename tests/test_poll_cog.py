@@ -66,3 +66,48 @@ async def test_poll_cog_constructs(tmp_path: Path) -> None:
         assert cog.poll.is_running() is False  # not started until cog_load
     finally:
         await bot.close()
+
+
+async def test_post_plain_sends_without_pings(tmp_path: Path) -> None:
+    import discord
+
+    from tigrinho.bot.client import TigrinhoBot
+
+    sent: list[tuple[str, discord.AllowedMentions]] = []
+
+    class _StubChannel(discord.abc.Messageable):
+        async def _get_channel(self) -> discord.abc.MessageableChannel:
+            raise NotImplementedError
+
+        async def send(  # type: ignore[override]
+            self,
+            content: str = "",
+            *,
+            allowed_mentions: discord.AllowedMentions | None = None,
+            **_kwargs: object,
+        ) -> discord.Message:
+            am = (
+                allowed_mentions if allowed_mentions is not None else discord.AllowedMentions.none()
+            )
+            sent.append((content, am))
+            return None  # type: ignore[return-value]
+
+    engine = create_db_engine(str(tmp_path / "t.db"))
+    Base.metadata.create_all(engine)
+    bot = TigrinhoBot(_settings())
+    try:
+        cog = PollCog(
+            bot,
+            settings=_settings(),
+            session_factory=create_session_factory(engine),
+            provider_factory=lambda _session: FakeProvider(),
+            clock=lambda: NOW,
+        )
+        # discord.abc.Messageable check is structural enough for get_channel's return here.
+        bot.get_channel = lambda _id: _StubChannel()  # type: ignore[method-assign,assignment,return-value]
+        await cog._post_plain(["🟢 oi", "⚽ gol"])
+    finally:
+        await bot.close()
+
+    assert [content for content, _ in sent] == ["🟢 oi", "⚽ gol"]
+    assert all(am.roles is False and am.users is False and am.everyone is False for _, am in sent)
