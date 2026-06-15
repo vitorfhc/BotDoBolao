@@ -20,7 +20,6 @@ NOW = datetime(2026, 6, 15, 18, 0, tzinfo=UTC)
 
 class _ReconcileTeams(TypedDict):
     home_team_id: int
-    away_team_id: int
     home_team_name: str
     away_team_name: str
 
@@ -28,7 +27,6 @@ class _ReconcileTeams(TypedDict):
 # Home team id 10 ("Brasil"), away team id 20 ("Argentina") in all reconcile tests.
 _RECONCILE_TEAMS: _ReconcileTeams = {
     "home_team_id": 10,
-    "away_team_id": 20,
     "home_team_name": "Brasil",
     "away_team_name": "Argentina",
 }
@@ -226,3 +224,70 @@ def test_render_goal_message_unknown_scorer() -> None:
     assert render_goal_message(ann) == (
         "⚽ **GOOOL do Brasil!** Brasil 1x0 Argentina — 👟 artilheiro a confirmar"
     )
+
+
+def test_reconcile_goals_interleaved_scorelines_multi_goal_cycle() -> None:
+    # Both sides score within one poll cycle: scorelines must reflect the minute order.
+    timeline = (
+        GoalEvent(10, 10, 7, "A", is_own_goal=False, is_penalty=False),  # home -> 1x0
+        GoalEvent(20, 20, 8, "B", is_own_goal=False, is_penalty=False),  # away -> 1x1
+        GoalEvent(30, 10, 9, "C", is_own_goal=False, is_penalty=False),  # home -> 2x1
+    )
+    anns, new_h, new_a = reconcile_goals(
+        home_team_id=10,
+        home_team_name="Brasil",
+        away_team_name="Argentina",
+        stored_home=0,
+        stored_away=0,
+        current_home=2,
+        current_away=1,
+        timeline=timeline,
+    )
+    assert (new_h, new_a) == (2, 1)
+    assert [(a.home_goals, a.away_goals, a.scorer_name) for a in anns] == [
+        (1, 0, "A"),
+        (1, 1, "B"),
+        (2, 1, "C"),
+    ]
+
+
+def test_reconcile_goals_var_one_side_plus_goal_other_side() -> None:
+    # Home had 1 (stored), VAR disallows it (live home 0); away scores (live away 1).
+    # The away goal must still be announced; the home side resyncs silently.
+    timeline = (GoalEvent(40, 20, 8, "B", is_own_goal=False, is_penalty=False),)
+    anns, new_h, new_a = reconcile_goals(
+        home_team_id=10,
+        home_team_name="Brasil",
+        away_team_name="Argentina",
+        stored_home=1,
+        stored_away=0,
+        current_home=0,
+        current_away=1,
+        timeline=timeline,
+    )
+    assert (new_h, new_a) == (0, 1)
+    assert len(anns) == 1
+    assert anns[0].scoring_team_name == "Argentina"
+    assert anns[0].home_goals == 0 and anns[0].away_goals == 1
+    assert anns[0].scorer_name == "B"
+
+
+def test_reconcile_goals_timeline_leads_live_caps_at_live_count() -> None:
+    # Timeline already lists 2 home goals but the live score shows only 1 -> announce just 1.
+    timeline = (
+        GoalEvent(10, 10, 7, "A", is_own_goal=False, is_penalty=False),
+        GoalEvent(15, 10, 9, "C", is_own_goal=False, is_penalty=False),
+    )
+    anns, new_h, new_a = reconcile_goals(
+        home_team_id=10,
+        home_team_name="Brasil",
+        away_team_name="Argentina",
+        stored_home=0,
+        stored_away=0,
+        current_home=1,
+        current_away=0,
+        timeline=timeline,
+    )
+    assert (new_h, new_a) == (1, 0)
+    assert len(anns) == 1
+    assert anns[0].scorer_name == "A"  # surplus ignored until the live score catches up

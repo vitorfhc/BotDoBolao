@@ -135,7 +135,6 @@ def detect_goal_deltas(
 def reconcile_goals(
     *,
     home_team_id: int,
-    away_team_id: int,
     home_team_name: str,
     away_team_name: str,
     stored_home: int | None,
@@ -148,59 +147,70 @@ def reconcile_goals(
     ``(announcements, new_stored_home, new_stored_away)``.
 
     The **live score** (``current_home``/``current_away``) is the source of truth for *how many*
-    goals exist; the ``timeline`` (from ``/fixtures/events``) names the scorers. Own goals count for
-    the opponent. If the timeline lags (fewer entries than the live score), the extra goals are
-    announced with ``scorer_name=None`` ('artilheiro a confirmar'). A decrease (VAR) produces no
-    announcements and just resyncs the stored score. ``None`` live scores leave that side unchanged.
+    goals each side has; the ``timeline`` (from ``/fixtures/events``, minute-ordered) supplies the
+    scorer and the order. Own goals count for the opponent. We walk the timeline in order so
+    intermediate scorelines stay correct even when both sides score within one cycle, capping each
+    side at the live count (the timeline may briefly lag or lead the score). If the timeline lags,
+    the remaining new goals are announced with ``scorer_name=None`` ('artilheiro a confirmar'). A
+    side whose live score dropped (VAR) is silently resynced — no announcement — while the other
+    side is still processed. ``None`` live scores leave that side unchanged.
     """
     sh = stored_home or 0
     sa_ = stored_away or 0
     ch = current_home if current_home is not None else sh
     ca = current_away if current_away is not None else sa_
 
-    # VAR / disallowed goal: a side dropped -> resync to live, announce nothing.
-    if ch < sh or ca < sa_:
-        return ([], ch, ca)
+    # A side whose live score dropped (VAR) is resynced without announcing; the other side is
+    # still processed normally below.
+    sh = min(sh, ch)
+    sa_ = min(sa_, ca)
 
-    # Split the timeline into beneficiary-ordered goal lists (own goals credit the opponent).
-    home_events: list[GoalEvent] = []
-    away_events: list[GoalEvent] = []
+    announcements: list[GoalAnnouncement] = []
+    run_home = 0
+    run_away = 0
+
+    def _emit(scoring_team_name: str, scorer: GoalEvent | None) -> None:
+        announcements.append(
+            GoalAnnouncement(
+                scoring_team_name=scoring_team_name,
+                home_team_name=home_team_name,
+                away_team_name=away_team_name,
+                home_goals=run_home,
+                away_goals=run_away,
+                scorer_name=scorer.player_name if scorer is not None else None,
+                minute=scorer.minute if scorer is not None else None,
+                is_own_goal=scorer.is_own_goal if scorer is not None else False,
+                is_penalty=scorer.is_penalty if scorer is not None else False,
+            )
+        )
+
+    # Walk the timeline in order, naming goals and keeping the running scoreline correct.
     for event in timeline:
         scored_by_home = event.team_id == home_team_id
         home_benefits = (not scored_by_home) if event.is_own_goal else scored_by_home
-        (home_events if home_benefits else away_events).append(event)
+        if home_benefits:
+            if run_home >= ch:  # timeline leads the live score: ignore the surplus for now
+                continue
+            run_home += 1
+            if run_home > sh:
+                _emit(home_team_name, event)
+        else:
+            if run_away >= ca:
+                continue
+            run_away += 1
+            if run_away > sa_:
+                _emit(away_team_name, event)
 
-    announcements: list[GoalAnnouncement] = []
-    for index in range(sh, ch):  # new home goals: stored_home .. current_home - 1
-        opt_ev: GoalEvent | None = home_events[index] if index < len(home_events) else None
-        announcements.append(
-            GoalAnnouncement(
-                scoring_team_name=home_team_name,
-                home_team_name=home_team_name,
-                away_team_name=away_team_name,
-                home_goals=index + 1,
-                away_goals=ca,
-                scorer_name=opt_ev.player_name if opt_ev is not None else None,
-                minute=opt_ev.minute if opt_ev is not None else None,
-                is_own_goal=opt_ev.is_own_goal if opt_ev is not None else False,
-                is_penalty=opt_ev.is_penalty if opt_ev is not None else False,
-            )
-        )
-    for index in range(sa_, ca):  # new away goals
-        opt_ev = away_events[index] if index < len(away_events) else None
-        announcements.append(
-            GoalAnnouncement(
-                scoring_team_name=away_team_name,
-                home_team_name=home_team_name,
-                away_team_name=away_team_name,
-                home_goals=ch,
-                away_goals=index + 1,
-                scorer_name=opt_ev.player_name if opt_ev is not None else None,
-                minute=opt_ev.minute if opt_ev is not None else None,
-                is_own_goal=opt_ev.is_own_goal if opt_ev is not None else False,
-                is_penalty=opt_ev.is_penalty if opt_ev is not None else False,
-            )
-        )
+    # Timeline lags the live score: announce the remaining new goals without a named scorer.
+    while run_home < ch:
+        run_home += 1
+        if run_home > sh:
+            _emit(home_team_name, None)
+    while run_away < ca:
+        run_away += 1
+        if run_away > sa_:
+            _emit(away_team_name, None)
+
     return (announcements, ch, ca)
 
 
