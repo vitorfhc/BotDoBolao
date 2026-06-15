@@ -61,6 +61,7 @@ class Game(Base):
     advancing_team_id: Mapped[int | None]
     announced_at: Mapped[datetime | None]
     kickoff_announced_at: Mapped[datetime | None]
+    reminder_sent_at: Mapped[datetime | None]
     last_announced_home_goals: Mapped[int | None]
     last_announced_away_goals: Mapped[int | None]
     settled_at: Mapped[datetime | None]
