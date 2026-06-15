@@ -7,8 +7,57 @@ or grading rules MUST update this module and COMPLETION.md together (enforced vi
 
 from __future__ import annotations
 
-from .bets import BetCategory
+from typing import assert_never
+
+from .bets import (
+    BetCategory,
+    BetPayload,
+    BttsPayload,
+    BttsSelection,
+    ExactScorePayload,
+    FirstScorerPayload,
+    OverUnderPayload,
+    OverUnderSelection,
+    WinnerPayload,
+    WinnerSelection,
+)
 from .scoring import POINTS
+
+BTTS_LABELS_PT: dict[BttsSelection, str] = {
+    BttsSelection.BOTH: "Sim (ambos)",
+    BttsSelection.ONLY_HOME: "Só o mandante",
+    BttsSelection.ONLY_AWAY: "Só o visitante",
+    BttsSelection.NEITHER: "Nenhum",
+}
+
+WINNER_LABELS_PT: dict[WinnerSelection, str] = {
+    WinnerSelection.HOME: "Mandante",
+    WinnerSelection.DRAW: "Empate",
+    WinnerSelection.AWAY: "Visitante",
+}
+
+OVER_UNDER_LABELS_PT: dict[OverUnderSelection, str] = {
+    OverUnderSelection.OVER: "Mais de 2.5",
+    OverUnderSelection.UNDER: "Menos de 2.5",
+}
+
+
+def render_payload(payload: BetPayload, *, scorer_name: str | None = None) -> str:
+    """Render a bet payload's value human-readably in pt-BR (pairs with the category label)."""
+    match payload:
+        case ExactScorePayload(home=home, away=away):
+            return f"{home}x{away}"
+        case FirstScorerPayload(player_id=player_id):
+            return scorer_name if scorer_name is not None else f"#{player_id}"
+        case BttsPayload(sel=sel):
+            return BTTS_LABELS_PT[sel]
+        case WinnerPayload(sel=sel):
+            return WINNER_LABELS_PT[sel]
+        case OverUnderPayload(sel=sel):
+            return OVER_UNDER_LABELS_PT[sel]
+        case _:  # pragma: no cover - exhaustive over BetPayload
+            assert_never(payload)
+
 
 CATEGORY_LABELS_PT: dict[BetCategory, str] = {
     BetCategory.EXACT_SCORE: "Placar exato",

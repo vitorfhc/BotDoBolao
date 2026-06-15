@@ -66,7 +66,8 @@ operating rules are in `RALPH.md`.
   - [x] `domain/bets.py::is_bet_open` + `bot/bets_logic.py` — `place_bet`/`delete_bet` (pure DB CRUD:
     check game open via `is_bet_open`, auto-create player, upsert/delete; `GameNotFoundError`/
     `GameNotOpenError` pt-BR); 8 tests.
-  - [ ] `domain/text_pt.py` rendering — `render_payload`/selection labels (pt-BR) for /minhas_apostas, /jogos.
+  - [x] `domain/text_pt.py` rendering — `render_payload` (pt-BR: score "2x1", scorer name/#id, BTTS/
+    winner/over-under labels) + `BTTS_LABELS_PT`/`WINNER_LABELS_PT`/`OVER_UNDER_LABELS_PT`; 6 tests.
   - [ ] `bot/bets_cog.py` — `/apostar` (game select → category select → modal/select → confirm/upsert),
     `/minhas_apostas` (list open/settled + delete control), `/jogos` (open games + what's left).
     **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`, followup).**
@@ -196,7 +197,12 @@ operating rules are in `RALPH.md`.
   **M5 complete.** SyncCog wiring into setup_hook deferred to M10 composition root.
 - **Iter 21 (M6 bets_logic):** `is_bet_open` (closes AT kickoff: `now < kickoff_utc`) + `place_bet`/
   `delete_bet` (pure DB CRUD; auto-create player; pt-BR `GameNotFoundError`/`GameNotOpenError`). 8 tests.
-- **Next:** M6 — pt-BR `render_payload` + selection labels in `text_pt.py` (for /minhas_apostas, /jogos),
-  then the bets cog UI (`/apostar` component flow, `/minhas_apostas`, `/jogos`) and subscribe cog
-  (`/inscrever`/`/sair`). **Ground discord.py UI (`ui.View`/`Select`/`Button`/`Modal`) + role add/remove.**
-  Keep rendering pure/testable; thin UI layer over `place_bet`/`delete_bet` + `parse_payload`.
+- **Iter 22 (M6 render_payload):** pt-BR `render_payload` (score/scorer/BTTS/winner/over-under) +
+  selection label maps. 6 tests. Bet line = `CATEGORY_LABELS_PT[cat]: render_payload(payload)`.
+- **Next:** M6 — the **subscribe cog** (`/inscrever`/`/sair`) is the simplest cog: add/remove the
+  Tigrinhos role on `interaction.user` (a Member), ephemeral replies, friendly "já inscrito"/"não
+  inscrito", handle missing-perm/hierarchy (reuse `role_management_problem`) → pt-BR + log/alert.
+  **Ground `member.add_roles`/`remove_roles`, `guild.get_role`, `interaction.user` as Member,
+  `interaction.response.send_message(ephemeral=True)`.** Keep a thin testable seam if possible
+  (e.g. a pure `subscribe_outcome(has_role, action)` deciding the reply). Then the bets cog
+  (`/apostar` flow, `/minhas_apostas`, `/jogos`) — the largest UI piece — over following iterations.
