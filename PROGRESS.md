@@ -40,13 +40,14 @@ operating rules are in `RALPH.md`.
   - [x] `domain/settlement.py` — `BetInput`/`BetOutcome`, `match_facts_from_result` (requires 90'
     scores), `settle_game` (grade every bet; pure → idempotent; malformed payload loses, no crash);
     7 tests (full mixed game, idempotency, empty, malformed-json-loses, facts builder).
-- [ ] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
-  - [x] `domain/text_pt.py` — pt-BR templates: `CATEGORY_LABELS_PT` + `help_text()` (pure) covering all
-    7 commands, categories+points (derived from `POINTS` → stays in sync), 90'/knockout rules, close-at-
-    kickoff, role-is-notifications-only, no-real-money; 6 tests; fits the 4096 embed limit.
-  - [ ] `bot/client.py` — discord.py client + `setup_hook` cog registration + guild-scoped command sync
-    + startup config validation (load_settings) + role/Manage-Roles fail-fast check. **Ground discord.py 2.x.**
-  - [ ] `bot/help_cog.py` — `/ajuda` slash command rendering `help_text()` (ephemeral or embed).
+- [x] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
+  - [x] `domain/text_pt.py` — pt-BR templates: `CATEGORY_LABELS_PT` + `help_text()` (pure), §11-complete; 6 tests.
+  - [x] `bot/client.py` — `TigrinhoBot(commands.Bot)` (config-driven; non-privileged `build_intents`);
+    `setup_hook` adds cogs + guild-scoped `tree.copy_global_to`+`sync`; `on_ready` fail-fast role check
+    via pure `role_management_problem`; grounded vs discord.py 2.7.
+  - [x] `bot/help_cog.py` — `HelpCog` `/ajuda` → ephemeral embed via `build_help_embed`.
+  - Note: full `run()`/`__main__` entrypoint (load_settings→configure_logging→run) lands in M10; future
+    cogs (M5–M8) get added in `setup_hook`. 8 tests (intents/embed/role-check/bot-construction).
 - [ ] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
 - [ ] **M6 — Commands cog(s):** `/apostar` (components), `/minhas_apostas`, `/jogos`, bet CRUD, time-based closing; `/inscrever` & `/sair` (Tigrinhos role).
 - [ ] **M7 — Poll cog:** active-window live polling, auto-settlement, results message, stuck-game alert.
@@ -151,10 +152,14 @@ operating rules are in `RALPH.md`.
   `BetCategory`/`POINTS` so it auto-syncs with scoring (§11 maintenance rule). Tests assert §11
   completeness (all commands, per-category points on one line, knockout/90'/close/role/no-money). No
   discord.py surface touched → no grounding needed this slice.
-- **Next:** M4 — `bot/client.py` + `bot/help_cog.py`. **Ground discord.py 2.x first** (web search:
-  `commands.Bot(intents=...)`, `Intents.none()/default()` [no privileged needed], `setup_hook` →
-  `add_cog` + `tree.copy_global_to(guild=...)` + `tree.sync(guild=...)`, `commands.Cog` +
-  `@app_commands.command`, `Interaction.response.send_message(ephemeral=...)`, sending an `Embed`).
-  Add `discord.py` dep. client.py: validate config at startup (`load_settings`) and fail-fast warn if
-  the bot lacks Manage Roles / the Tigrinhos role is above it (check in `on_ready`). help_cog renders
-  `help_text()` as an ephemeral embed. Keep gateway code thin; unit-test any pure helpers.
+- **Iter 17 (M4 client+help_cog, M4 DONE):** Grounded discord.py 2.7. `TigrinhoBot` constructed from
+  validated `Settings`; `Intents.default()` (no privileged). `setup_hook` adds cogs + guild-scoped sync.
+  `on_ready` runs pure `role_management_problem` (Manage Roles + role-below-bot hierarchy) → pt-BR.
+  Tested pure helpers offline (intents/embed/role-check) + a construction smoke test (add_cog wires
+  /ajuda into the tree). Dep: `discord.py`. **M4 complete.**
+- **Next:** M5 — Sync cog (`bot/sync_cog.py`): daily fixtures sync (`tasks.loop` at `sync_time`),
+  consolidated announcement pinging `@Tigrinhos`, reschedule (update kickoff+match_hash) & void
+  (POSTPONED/CANCELLED→VOID + void bets) handling. **Ground discord.py `tasks.loop(time=)` + sending
+  to a channel + role mention/AllowedMentions.** Keep the sync *logic* pure/testable (a function over
+  provider fixtures + existing games → actions: new/reschedule/void), thin gateway wrapper. Add
+  `match_hash` helper (sha256 of kickoff|home|away, §6). Build kickoff_local via settings.tzinfo.
