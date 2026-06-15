@@ -33,7 +33,10 @@ operating rules are in `RALPH.md`.
     by `RequestBudget`; body-`errors`→`ApiFootballError`; `aclose()`); 8 mock-transport tests.
 - [ ] **M3 — Domain:** `bets.py`, `scoring.py`, `settlement.py` (pure) + exhaustive grading tests.
   - [x] `domain/bets.py` — `BetCategory` + selection enums + frozen payload models (ExactScore/FirstScorer/Btts/Winner/OverUnder) + `parse_payload`/`payload_to_dict`/`dump_payload`/`parse_payload_json` with validation (`InvalidBetPayload`); PEP 695 generics; 21 tests.
-  - [ ] `domain/scoring.py` — central points table + pure per-category grading over a 90' result.
+  - [x] `domain/scoring.py` — `POINTS` table + `MatchFacts` (grading input: stage, team ids, 90' goals,
+    goal timeline, advancing) + `first_genuine_scorer`, `is_winning_bet` (all 5 categories;
+    knockout=advancing/no-draw, group=1X2, BTTS pattern, O/U 2.5 boundary, first-scorer min<=90 skip
+    own goals), `score_bet`; 28 exhaustive tests.
   - [ ] `domain/settlement.py` — grade every bet for a `MatchResult` (idempotent) + exhaustive §16 tests.
 - [ ] **M4 — Bot skeleton:** discord.py client, startup config validation, `/ajuda`.
 - [ ] **M5 — Sync cog:** daily fixtures sync, consolidated announcement + `@Tigrinhos` ping, reschedule/void handling.
@@ -127,8 +130,13 @@ operating rules are in `RALPH.md`.
   (`payload_to_dict`/`dump_payload`/`parse_payload_json`). bool rejected as score; player_id>0;
   DRAW accepted by model (knockout rule is grading/UI). Used PEP 695 `[E: StrEnum]` per ruff UP047.
   21 tests. NB: `data.get` returns `Any | None` → coerce via a local `Any` for the enum ctor.
-- **Next:** M3 — `domain/scoring.py`: central `POINTS` table (EXACT_SCORE 5, FIRST_SCORER 4, BTTS 2,
-  WINNER 2, OVER_UNDER 1) + pure `grade(payload, result)` per category over the 90' result
-  (knockout WINNER = advancing team, no draw; group = 1X2; first-scorer = first non-own-goal min<=90;
-  BTTS pattern; O/U 2.5). Exhaustive §16 table tests (edge cases: 0-0, own-goal-first, O/U boundary,
-  knockout draw-selection-loses). Then `settlement.py`.
+- **Iter 14 (M3 scoring.py):** Pure grading. Key design call: `MatchResult` lacks home/away team ids
+  (needed for knockout WINNER), so introduced `MatchFacts` (stage, team ids, 90' goals, timeline,
+  advancing) built by settlement from Game+MatchResult; grade against that. `first_genuine_scorer`
+  sorts by minute (robust to unordered events), skips own goals, requires minute<=90. 28 exhaustive
+  tests incl. O/U boundaries (2/3), knockout draw-selection-loses, own-goal-first, ET-goal-excluded.
+- **Next:** M3 — `domain/settlement.py`: pure `settle_game(match_result, bets, *, home_team_id,
+  away_team_id) -> list[BetOutcome]` (or build `MatchFacts` + grade each bet via `score_bet`,
+  parse payload by category). Idempotent (re-run → identical). Returns per-bet (is_correct,
+  points, settled). Also expose first_genuine_scorer result for storing Game.first_scorer_player_id.
+  Exhaustive tests incl. idempotency + a full mixed-bet game. Then M3 done → M4 bot skeleton.
