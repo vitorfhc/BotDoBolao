@@ -196,7 +196,9 @@ class BoardCog(commands.Cog):
         with self.session_factory() as session:
             rows = build_standing_inputs(session)
         standings = compute_standings(rows, period=period, tz=self.settings.tzinfo, now=now)
-        # /placar is social — post publicly (not ephemeral).
+        # /placar is social — post publicly (not ephemeral). Render <@id> links for
+        # readability, but suppress pings so the whole leaderboard isn't notified.
         await interaction.response.send_message(
-            render_placar(standings, period=period, caller_id=interaction.user.id)
+            render_placar(standings, period=period, caller_id=interaction.user.id),
+            allowed_mentions=discord.AllowedMentions.none(),
         )
