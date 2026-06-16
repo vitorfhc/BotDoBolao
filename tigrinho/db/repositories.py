@@ -66,6 +66,23 @@ class GameRepository:
         )
         return list(self.session.scalars(stmt))
 
+    def list_upcoming(self, now: datetime, within_hours: int) -> list[Game]:
+        """Open games kicking off within the next ``within_hours`` — the daily digest (§9.1).
+
+        Future kickoff (still open for bets), not yet settled/voided, bounded above by the window.
+        """
+        latest_kickoff = now + timedelta(hours=within_hours)
+        stmt = (
+            select(Game)
+            .where(
+                Game.settled_at.is_(None),
+                Game.kickoff_utc > now,
+                Game.kickoff_utc <= latest_kickoff,
+            )
+            .order_by(Game.kickoff_utc)
+        )
+        return list(self.session.scalars(stmt))
+
     def list_active(self, now: datetime, window_hours: int) -> list[Game]:
         """Games to poll: kicked off, within ``window_hours`` of kickoff, not yet settled (§9.2).
 

@@ -55,14 +55,38 @@ def session(tmp_path: Path) -> Iterator[Session]:
         yield s
 
 
-async def test_collect_announces_new_games(session: Session) -> None:
+async def test_collect_announces_next_24h_games(session: Session) -> None:
     provider = FakeProvider(fixtures=[_fixture(1), _fixture(2)])
     messages = await collect_sync_messages(session, provider, _settings(), now=NOW)
     assert len(messages) == 1
+    assert "24h" in messages[0]
     assert "<@&333>" in messages[0]
     assert "/apostar" in messages[0]
     assert GameRepository(session).get(1) is not None
     assert GameRepository(session).get(2) is not None
+
+
+async def test_collect_excludes_games_beyond_24h(session: Session) -> None:
+    far = NOW + timedelta(hours=30)
+    messages = await collect_sync_messages(
+        session, FakeProvider(fixtures=[_fixture(1, kickoff=far)]), _settings(), now=NOW
+    )
+    # The game is synced into the DB but is too far out for the morning digest.
+    assert messages == []
+    assert GameRepository(session).get(1) is not None
+
+
+async def test_collect_announces_already_known_upcoming_game(session: Session) -> None:
+    settings = _settings()
+    # First sync inserts the game; a later sync the same morning re-announces it because it
+    # still kicks off within 24h (the digest is time-windowed, not "new games only").
+    await collect_sync_messages(session, FakeProvider(fixtures=[_fixture(1)]), settings, now=NOW)
+    messages = await collect_sync_messages(
+        session, FakeProvider(fixtures=[_fixture(1)]), settings, now=NOW
+    )
+    assert len(messages) == 1
+    assert "24h" in messages[0]
+    assert "Brasil" in messages[0]
 
 
 async def test_collect_reschedule_notice(session: Session) -> None:
@@ -95,12 +119,8 @@ async def test_collect_void_notice_and_voids_bets(session: Session) -> None:
     assert bet is not None and bet.points_awarded == 0
 
 
-async def test_collect_no_changes_no_messages(session: Session) -> None:
-    settings = _settings()
-    await collect_sync_messages(session, FakeProvider(fixtures=[_fixture(1)]), settings, now=NOW)
-    messages = await collect_sync_messages(
-        session, FakeProvider(fixtures=[_fixture(1)]), settings, now=NOW
-    )
+async def test_collect_no_upcoming_games_no_messages(session: Session) -> None:
+    messages = await collect_sync_messages(session, FakeProvider(fixtures=[]), _settings(), now=NOW)
     assert messages == []
 
 

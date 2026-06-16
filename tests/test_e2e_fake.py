@@ -64,7 +64,7 @@ async def test_end_to_end_fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     )
     provider = FakeProvider(fixtures=[fixture])
 
-    # 1) SYNC — the daily sync inserts the game and announces it.
+    # 1) SYNC — the daily sync inserts the game and the morning digest lists it (kicks off <24h).
     with factory() as session:
         messages = await collect_sync_messages(session, provider, settings, now=T0)
         session.commit()

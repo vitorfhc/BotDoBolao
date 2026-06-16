@@ -27,13 +27,15 @@ from .sync_planning import (
     ExistingGame,
     SyncPlan,
     compute_match_hash,
-    format_new_games_announcement,
+    format_daily_games_announcement,
     format_reschedule_notice,
     format_void_notice,
     plan_sync,
 )
 
 SYNC_WINDOW_HOURS = 48
+# How far ahead the daily morning announcement looks (COMPLETION.md §9.1).
+DAILY_ANNOUNCE_HOURS = 24
 log = get_logger("tigrinho.bot.sync")
 
 
@@ -116,6 +118,10 @@ async def collect_sync_messages(
 ) -> list[str]:
     """Run one sync: fetch fixtures, plan, apply to the DB, and return messages to announce.
 
+    The morning announcement is the **next-24h games digest** (built from the DB after applying the
+    plan, so it reflects every open game in the window — not just the ones this sync added).
+    Reschedule and void notices about already-tracked games are still posted as concise messages.
+
     No Discord I/O and no commit — the caller (the cog) commits and sends. May raise
     ``BudgetExceeded`` from the provider, which the cog turns into a skip.
     """
@@ -134,9 +140,10 @@ async def collect_sync_messages(
 
     role_mention = f"<@&{settings.tigrinhos_role_id}>"
     messages: list[str] = []
-    if plan.new:
+    upcoming = games.list_upcoming(now, DAILY_ANNOUNCE_HOURS)
+    if upcoming:
         messages.append(
-            format_new_games_announcement(plan.new, role_mention=role_mention, tz=settings.tzinfo)
+            format_daily_games_announcement(upcoming, role_mention=role_mention, tz=settings.tzinfo)
         )
     messages += [
         format_reschedule_notice(fixture, tz=settings.tzinfo) for fixture in plan.rescheduled

@@ -9,8 +9,8 @@ from zoneinfo import ZoneInfo
 from tigrinho.bot.sync_planning import (
     ExistingGame,
     compute_match_hash,
+    format_daily_games_announcement,
     format_kickoff_pt,
-    format_new_games_announcement,
     format_reschedule_notice,
     format_void_notice,
     plan_sync,
@@ -130,13 +130,14 @@ def test_format_kickoff_pt_shape() -> None:
     assert "16:00" in text  # localized to São Paulo
 
 
-def test_new_games_announcement() -> None:
-    text = format_new_games_announcement(
+def test_daily_games_announcement() -> None:
+    text = format_daily_games_announcement(
         [_fixture(1), _fixture(2, home_name="França", away_name="Alemanha")],
         role_mention="<@&333>",
         tz=SP,
     )
     assert "<@&333>" in text
+    assert "24h" in text  # the morning digest is framed as the next-24h games
     assert "Brasil" in text and "Argentina" in text
     assert "França" in text and "Alemanha" in text
     assert "/apostar" in text

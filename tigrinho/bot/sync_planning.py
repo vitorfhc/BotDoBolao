@@ -11,8 +11,27 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, tzinfo
+from typing import Protocol
 
 from tigrinho.providers.base import Fixture, GameStatus
+
+
+class Matchup(Protocol):
+    """Minimal structural view needed to render a matchup line (satisfied by ``Fixture`` and the
+    ``Game`` ORM row), so the announcement text stays pure and works off either source.
+
+    Members are read-only properties so the frozen ``Fixture`` dataclass satisfies the protocol.
+    """
+
+    @property
+    def home_team_name(self) -> str: ...
+
+    @property
+    def away_team_name(self) -> str: ...
+
+    @property
+    def kickoff_utc(self) -> datetime: ...
+
 
 # pt-BR weekday abbreviations, Monday=0 .. Sunday=6.
 _WEEKDAYS_PT = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
@@ -80,17 +99,21 @@ def format_kickoff_pt(kickoff_local: datetime) -> str:
     return f"{weekday} {kickoff_local:%d/%m %H:%M}"
 
 
-def _matchup_line(fixture: Fixture, tz: tzinfo) -> str:
-    when = format_kickoff_pt(fixture.kickoff_utc.astimezone(tz))
-    return f"• {fixture.home_team_name} x {fixture.away_team_name} — {when}"
+def _matchup_line(matchup: Matchup, tz: tzinfo) -> str:
+    when = format_kickoff_pt(matchup.kickoff_utc.astimezone(tz))
+    return f"• {matchup.home_team_name} x {matchup.away_team_name} — {when}"
 
 
-def format_new_games_announcement(
-    fixtures: Sequence[Fixture], *, role_mention: str, tz: tzinfo
+def format_daily_games_announcement(
+    games: Sequence[Matchup], *, role_mention: str, tz: tzinfo
 ) -> str:
-    """Build the consolidated new-games announcement that pings the role (§9.1)."""
-    lines = [f"🐯 Novos jogos abertos para apostas! {role_mention}"]
-    lines += [_matchup_line(fixture, tz) for fixture in fixtures]
+    """Build the morning digest of games kicking off in the next 24h, pinging the role (§9.1).
+
+    Unlike a per-sync "new games" notice, this is time-windowed: every morning it lists the games
+    open for bets that kick off within the next 24h, regardless of which sync first added them.
+    """
+    lines = [f"🐯 Jogos das próximas 24h! Bora apostar? {role_mention}"]
+    lines += [_matchup_line(game, tz) for game in games]
     lines.append("Use /apostar para palpitar (fecha no apito inicial).")
     return "\n".join(lines)
 
