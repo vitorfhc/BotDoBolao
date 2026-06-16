@@ -105,3 +105,53 @@ async def test_board_cog_registers_placar(tmp_path: Path) -> None:
         assert "placar" in {c.name for c in bot.tree.get_commands()}
     finally:
         await bot.close()
+
+
+async def test_placar_posts_without_pinging(session: Session) -> None:
+    """/placar renders <@id> links but must not ping anyone (COMPLETION.md §10)."""
+    import discord
+
+    from tigrinho.bot.client import TigrinhoBot
+
+    _add_game(session, 1, settled=NOW)
+    PlayerRepository(session).get_or_create(100, "Vitor", now=NOW)
+    bet = BetRepository(session).upsert(
+        fixture_id=1, player_discord_id=100, category="WINNER", payload_json="{}", now=NOW
+    )
+    bet.is_correct = True
+    bet.points_awarded = 2
+    bet.settled_at = NOW
+    session.commit()
+
+    sent: list[tuple[str, discord.AllowedMentions | None]] = []
+
+    class _StubResponse:
+        async def send_message(
+            self, content: str, *, allowed_mentions: discord.AllowedMentions | None = None
+        ) -> None:
+            sent.append((content, allowed_mentions))
+
+    class _StubUser:
+        id = 100
+
+    class _StubInteraction:
+        response = _StubResponse()
+        user = _StubUser()
+
+    bot = TigrinhoBot(_settings())
+    try:
+        cog = BoardCog(
+            bot,
+            settings=_settings(),
+            session_factory=lambda: session,
+            clock=lambda: NOW,
+        )
+        await cog.placar.callback(cog, _StubInteraction(), "geral")  # type: ignore[arg-type, call-arg]
+    finally:
+        await bot.close()
+
+    assert len(sent) == 1
+    content, allowed = sent[0]
+    assert "<@100>" in content  # still renders as a link
+    assert allowed is not None
+    assert allowed.users is False and allowed.roles is False and allowed.everyone is False

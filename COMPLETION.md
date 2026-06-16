@@ -446,7 +446,8 @@ Restart-safe and idempotent (dedup state persists on the game row).
   - **Semana (weekly):** points from games whose **kickoff falls in the current Mon→Sun week in
     `timezone`**. Resets each Monday 00:00.
 - Display: ranked list (top ~15) with medals for the top 3; if the caller is outside the top 15,
-  append their own rank/points line.
+  append their own rank/points line. Player names render as `<@id>` links but the message is posted
+  with **mentions suppressed** (`AllowedMentions.none()`) so the leaderboard never pings anyone.
 - **Tie-break order:** (1) total points desc, (2) exact-score hits desc, (3) total correct bets
   desc, (4) earliest `players.created_at`.
 - The board MUST be derivable purely from settled bets (so the CLI can rebuild it).
