@@ -88,6 +88,17 @@ def test_game_list_open_only_future_unsettled_sorted(session: Session) -> None:
     assert open_ids == [3, 1]  # sorted by kickoff ascending
 
 
+def test_game_list_upcoming_within_window_future_unsettled_sorted(session: Session) -> None:
+    repo = GameRepository(session)
+    repo.add(_game(1, NOW + timedelta(hours=5)))  # within 24h -> included
+    repo.add(_game(2, NOW - timedelta(hours=1)))  # already started -> excluded
+    repo.add(_game(3, NOW + timedelta(hours=2)))  # within 24h, earlier
+    repo.add(_game(4, NOW + timedelta(hours=30)))  # beyond 24h -> excluded
+    repo.add(_game(5, NOW + timedelta(hours=3), settled=NOW))  # settled -> excluded
+    upcoming_ids = [g.fixture_id for g in repo.list_upcoming(NOW, within_hours=24)]
+    assert upcoming_ids == [3, 1]  # sorted by kickoff ascending
+
+
 def test_game_list_active_within_window_and_unsettled(session: Session) -> None:
     repo = GameRepository(session)
     repo.add(_game(1, NOW + timedelta(hours=1)))  # not kicked off yet -> not active

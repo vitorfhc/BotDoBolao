@@ -362,17 +362,20 @@ When a game becomes `FINISHED` (see §9), the bot:
 Flow (1 provider call, highest budget priority):
 1. Fetch WC fixtures for the next **48h** (window configurable internally).
 2. For each fixture **with both real teams decided** (skip placeholders like "Winner Group A"/TBD):
-   - **New** (`fixture_id` unseen) → insert, queue for announcement.
+   - **New** (`fixture_id` unseen) → insert (no per-sync "new game" ping — see the daily digest below).
    - **Rescheduled** (known `fixture_id`, kickoff changed) → update kickoff + `match_hash`, queue a
      re-announcement; existing bets remain valid (now tied to the new time).
    - **Postponed/Cancelled** (status) → set `status = VOID`, **void its bets** (no points),
      queue a player notification.
-3. Send **one consolidated announcement** for all newly-opened games, **pinging
-   `@Tigrinhos`** (the role). Re-announcements and void notices are separate concise messages.
+3. Send **one consolidated morning digest** of every open game kicking off **within the next 24h**
+   (built from the DB after applying the plan, so it lists all upcoming games in the window — not
+   only the ones this sync added — and re-announces them each morning until they kick off),
+   **pinging `@Tigrinhos`** (the role). The digest is skipped when no game falls in the window.
+   Re-announcements (reschedules) and void notices are separate concise messages.
 
-Announcement text is pt-BR (example):
+Daily-digest text is pt-BR (example):
 ```
-🐯 Novos jogos abertos para apostas! @Tigrinhos
+🐯 Jogos das próximas 24h! Bora apostar? @Tigrinhos
 • Brasil x Argentina — Sáb 16/06 16:00
 • França x Alemanha — Sáb 16/06 19:00
 Use /apostar para palpitar (fecha no apito inicial).
